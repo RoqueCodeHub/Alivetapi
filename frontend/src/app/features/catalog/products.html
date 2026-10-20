@@ -1,0 +1,94 @@
+<h1>Inventario de productos</h1>
+<p class="actions">
+  <a routerLink="/app/productos/nuevo">Registrar producto</a>
+  <a routerLink="/app/ingreso-stock">Registrar compra o ingreso de stock</a>
+</p>
+
+<form class="filters" [formGroup]="filters" (ngSubmit)="search()">
+  <input placeholder="Buscar nombre, código, presentación..." formControlName="q" />
+  <select formControlName="category_id">
+    <option value="">Categoría</option>
+    @for (c of categories(); track c.id) {
+      <option [value]="c.id">{{ c.nombre }}</option>
+    }
+  </select>
+  <select formControlName="especie">
+    <option value="">Especie</option>
+    @for (e of especies; track e) {
+      <option [value]="e">{{ e }}</option>
+    }
+  </select>
+  <select formControlName="tipo">
+    <option value="">Tipo</option>
+    @for (t of tipos; track t) {
+      <option [value]="t">{{ t }}</option>
+    }
+  </select>
+  <select formControlName="proveedor_id">
+    <option value="">Proveedor</option>
+    @for (s of suppliers(); track s.id) {
+      <option [value]="s.id">{{ s.name }}</option>
+    }
+  </select>
+  <select formControlName="marca_id">
+    <option value="">Marca</option>
+    @for (b of brands(); track b.id) {
+      <option [value]="b.id">{{ b.nombre }}</option>
+    }
+  </select>
+  <select formControlName="activo">
+    <option value="">Estado</option>
+    <option value="1">Activo</option>
+    <option value="0">Inactivo</option>
+  </select>
+  <label><input type="checkbox" formControlName="low_stock" /> Stock bajo</label>
+  <label><input type="checkbox" formControlName="expired" /> Vencidos</label>
+  <label><input type="checkbox" formControlName="expiring" /> Por vencer</label>
+  <select formControlName="per_page">
+    <option value="15">15</option>
+    <option value="25">25</option>
+    <option value="50">50</option>
+  </select>
+  <button type="submit">Filtrar</button>
+</form>
+
+<div class="cards">
+  @for (item of items(); track item.product_id + '-' + (item.variant_id ?? 0) + '-' + item.presentacion) {
+    <article class="card" [class.low]="item.stock_status === 'bajo'" [class.empty]="item.stock_status === 'sin_stock'">
+      <div>
+        <h2>{{ item.nombre }}</h2>
+        <p>{{ item.categoria }} · {{ item.presentacion }}</p>
+        <p>{{ item.lote_count }} {{ item.lote_count === 1 ? 'lote' : 'lotes' }} · {{ item.on_hand }} unidades</p>
+        <p class="price">
+          @if (item.precio_venta > 0) {
+            Precio de venta desde S/ {{ money(item.precio_venta) }}
+          } @else {
+            Precio de venta por definir
+          }
+        </p>
+      </div>
+      <div class="qty">
+        <strong>{{ item.on_hand }}</strong>
+        <span>{{ statusLabel(item.stock_status) }}</span>
+      </div>
+      <nav>
+        <a [routerLink]="['/app/productos', item.product_id]">Ver detalle</a>
+        @if (item.variant_id) {
+          <a [routerLink]="['/app/stock', item.variant_id]">Ver lotes</a>
+        } @else {
+          <a [routerLink]="['/app/productos', item.product_id, 'lotes']">Ver lotes</a>
+        }
+        <a [routerLink]="['/app/productos', item.product_id]">Editar</a>
+        <a [routerLink]="['/app/ingreso-stock']" [queryParams]="{ producto_id: item.product_id, variant_id: item.variant_id }">Ajustar stock</a>
+      </nav>
+    </article>
+  } @empty {
+    <p>No hay productos para esos filtros.</p>
+  }
+</div>
+
+<div class="pager">
+  <button type="button" [disabled]="meta().current_page <= 1" (click)="goTo(meta().current_page - 1)">Anterior</button>
+  <span>Página {{ meta().current_page }} de {{ meta().last_page }} — {{ meta().total }} productos</span>
+  <button type="button" [disabled]="meta().current_page >= meta().last_page" (click)="goTo(meta().current_page + 1)">Siguiente</button>
+</div>

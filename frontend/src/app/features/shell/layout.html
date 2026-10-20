@@ -1,0 +1,18 @@
+<div class="layout">
+  <aside>
+    <p class="brand">Veterinaria</p>
+    <p class="who">{{ auth.user()?.name }}</p>
+    <p class="roles">{{ auth.user()?.roles?.join(', ') }}</p>
+    <nav>
+      @for (item of visibleMenu(); track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: item.path === '/app' }">
+          {{ item.label }}
+        </a>
+      }
+    </nav>
+    <button type="button" (click)="logout()">Cerrar sesión</button>
+  </aside>
+  <section>
+    <router-outlet />
+  </section>
+</div>

@@ -1,0 +1,65 @@
+<h1>Ventas</h1>
+<p>
+  Selecciona una presentación con stock. El lote se asigna por FEFO (primero en vencer).
+  @if (auth.hasPermission('sales.charge')) {
+    El cobro está en <a routerLink="/app/pos">Caja</a>.
+  } @else {
+    Al guardar, la venta queda pendiente y la ve cualquier cajera para cobrar.
+  }
+</p>
+
+<form class="filters" [formGroup]="filters" (ngSubmit)="search()">
+  <input placeholder="Buscar producto o escanear código..." formControlName="q" />
+  <select formControlName="category_id">
+    <option value="">Todas las categorías</option>
+    @for (c of categories(); track c.id) {
+      <option [value]="c.id">{{ c.nombre }}</option>
+    }
+  </select>
+  <button type="submit">Buscar</button>
+</form>
+
+<div class="layout-sales">
+  <div>
+    <div class="cards">
+      @for (hit of hits(); track hit.variant_id) {
+        <article class="card">
+          <h3>{{ hit.nombre }}</h3>
+          <p>{{ hit.presentacion || '—' }} @if (hit.talla) { · talla {{ hit.talla }} }</p>
+          <p class="meta">Disponible: {{ hit.on_hand }}</p>
+          <p class="price">@if (hit.sale_price > 0) { S/ {{ hit.sale_price }} } @else { Precio por definir }</p>
+          <input type="number" min="0.01" step="0.01" [value]="hit.sale_price || ''" [attr.data-id]="hit.variant_id" placeholder="Precio" />
+          <button type="button" (click)="add(hit, $event)" [disabled]="hit.on_hand < 1">Agregar</button>
+        </article>
+      } @empty {
+        <p>No hay productos para mostrar.</p>
+      }
+    </div>
+    <div class="pager">
+      <button type="button" [disabled]="meta().current_page <= 1" (click)="goTo(meta().current_page - 1)">Anterior</button>
+      <span>Página {{ meta().current_page }} de {{ meta().last_page }}</span>
+      <button type="button" [disabled]="meta().current_page >= meta().last_page" (click)="goTo(meta().current_page + 1)">Siguiente</button>
+    </div>
+  </div>
+
+  <aside class="cart">
+    <h2>Carrito de venta</h2>
+    <ul>
+      @for (line of cart(); track $index) {
+        <li>
+          <span>{{ line.description }} ×{{ line.quantity }}</span>
+          <strong>S/ {{ line.quantity * line.unit_price }}</strong>
+          <button type="button" (click)="remove($index)">Quitar</button>
+        </li>
+      } @empty {
+        <li>Sin productos</li>
+      }
+    </ul>
+    <p class="total">Total S/ {{ total() }}</p>
+    <input placeholder="Notas" [value]="notes()" (input)="notes.set($any($event.target).value)" />
+    <button type="button" class="save" (click)="save()" [disabled]="!cart().length">Guardar venta por pagar</button>
+    @if (message()) {
+      <p>{{ message() }}</p>
+    }
+  </aside>
+</div>

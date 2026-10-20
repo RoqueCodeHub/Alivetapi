@@ -1,0 +1,47 @@
+<p><a routerLink="/app/productos">Volver al inventario</a></p>
+<h1>Registrar compra o ingreso de stock</h1>
+<p>Busca un producto existente. Si todavía no está en el catálogo, <a routerLink="/app/productos/nuevo">regístralo primero</a>.</p>
+
+<form class="search" [formGroup]="searchForm">
+  <input placeholder="Buscar producto por nombre o código" formControlName="q" />
+</form>
+
+@if (matches().length) {
+  <ul class="suggest">
+    @for (item of matches(); track item.id) {
+      <li>
+        <button type="button" (click)="pick(item)">
+          {{ item.nombre }} · {{ item.presentacion || item.categoria?.nombre || 'sin presentación' }}
+        </button>
+      </li>
+    }
+  </ul>
+}
+
+@if (selected(); as product) {
+  <p class="picked">Producto: <strong>{{ product.nombre }}</strong> — stock actual {{ product.stock_actual }}</p>
+}
+
+<form class="intake" [formGroup]="form" (ngSubmit)="save()">
+  @if (variants().length) {
+    <label>Presentación / variante
+      <select formControlName="variant_id" (change)="onVariantChange($any($event.target).value)">
+        @for (variant of variants(); track variant.id) {
+          <option [ngValue]="variant.id">{{ variant.presentation || 'Sin presentación' }}</option>
+        }
+      </select>
+    </label>
+  }
+  <input placeholder="Nueva presentación (si no existe)" formControlName="presentation" />
+  <input placeholder="Número de lote" formControlName="batch_code" />
+  <input type="number" min="1" placeholder="Cantidad" formControlName="quantity" />
+  <input type="number" step="0.01" placeholder="Costo" formControlName="cost" />
+  <input type="number" step="0.01" placeholder="Precio de venta" formControlName="sale_price" />
+  <label>Vencimiento <input type="date" formControlName="expiry_date" /></label>
+  <input placeholder="Motivo" formControlName="reason" />
+  <button type="submit">Guardar ingreso</button>
+</form>
+
+@if (message()) {
+  <p>{{ message() }}</p>
+}
