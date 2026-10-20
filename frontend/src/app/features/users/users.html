@@ -1,0 +1,54 @@
+<h1>Usuarios</h1>
+@if (error()) {
+  <p class="error">{{ error() }}</p>
+}
+@if (message()) {
+  <p class="ok">{{ message() }}</p>
+}
+
+<form [formGroup]="form" (ngSubmit)="create()">
+  <h2>Crear usuario</h2>
+  <input placeholder="Nombre" formControlName="name" />
+  <input placeholder="Correo" formControlName="email" />
+  <input placeholder="Contraseña" type="password" formControlName="password" />
+  <select formControlName="roles">
+    @for (role of roles(); track role) {
+      <option [value]="role">{{ role }}</option>
+    }
+  </select>
+  <p class="hint">El operador solo registra en <strong>Ventas</strong>. Para cobrar, el rol es <strong>Cajero</strong> o <strong>Administrador</strong>: entran a <strong>Caja</strong> y ven las ventas de todos.</p>
+  <button type="submit">Crear</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Correo</th>
+      <th>Roles</th>
+      <th>Estado</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (user of users(); track user.id) {
+      <tr>
+        <td>{{ user.name }}</td>
+        <td>{{ user.email }}</td>
+        <td>
+          <select (change)="assignRole(user, $any($event.target).value)">
+            @for (role of roles(); track role) {
+              <option [value]="role" [selected]="user.roles.includes(role)">{{ role }}</option>
+            }
+          </select>
+        </td>
+        <td>{{ user.is_active ? 'Activo' : 'Inactivo' }}</td>
+        <td>
+          <button type="button" (click)="toggle(user)">
+            {{ user.is_active ? 'Desactivar' : 'Activar' }}
+          </button>
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>

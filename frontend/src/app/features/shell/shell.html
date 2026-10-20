@@ -1,0 +1,12 @@
+<main class="shell">
+  <h1>Sistema de Gestión Veterinaria</h1>
+  <p>Frontend Angular 21 conectado a Laravel <code>/api/v1</code>.</p>
+
+  @if (loading()) {
+    <p class="status">Consultando API…</p>
+  } @else if (error()) {
+    <p class="status error">API: {{ error() }}</p>
+  } @else if (health(); as data) {
+    <p class="status ok">API: {{ data.status }} — {{ data.app }} ({{ data.database }})</p>
+  }
+</main>

@@ -1,0 +1,119 @@
+h1 { margin-top: 0; }
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.filters input {
+  min-width: 16rem;
+  flex: 1;
+}
+
+.layout-sales {
+  display: grid;
+  grid-template-columns: 1fr 18rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+  min-height: 10rem;
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #52525b;
+}
+
+.card .price {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #18181b;
+}
+
+.card button,
+.filters button,
+.pager button,
+.cart button {
+  padding: 0.4rem 0.55rem;
+  cursor: pointer;
+}
+
+.pager {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.cart {
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.6rem;
+  padding: 0.85rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.cart ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+}
+
+.cart li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #f4f4f5;
+  font-size: 0.85rem;
+}
+
+.total {
+  font-weight: 700;
+}
+
+.cart input,
+.save {
+  width: 100%;
+  margin-top: 0.4rem;
+  box-sizing: border-box;
+}
+
+.save {
+  background: #18181b;
+  color: #fff;
+  border: 0;
+  border-radius: 0.4rem;
+  padding: 0.55rem;
+}
+
+@media (max-width: 1100px) {
+  .layout-sales {
+    grid-template-columns: 1fr;
+  }
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -1,0 +1,91 @@
+<p><a routerLink="/app/productos">Volver</a></p>
+<h1>{{ isNew() ? 'Registrar producto' : 'Producto' }}</h1>
+<p>El catálogo guarda nombre, categoría, marca y presentación. El stock se registra en un ingreso de lote.</p>
+
+<form class="product" [formGroup]="productForm" (ngSubmit)="saveProduct()">
+  <input placeholder="Nombre del producto" formControlName="nombre" />
+  @if (suggestions().length) {
+    <ul class="suggest">
+      @for (item of suggestions(); track item.id) {
+        <li>
+          <button type="button" (click)="useExisting(item)">
+            Ya existe: {{ item.nombre }} — úsalo y registra una compra
+          </button>
+        </li>
+      }
+    </ul>
+  }
+  <input placeholder="Presentación general" formControlName="presentacion" />
+  <input placeholder="Talla" formControlName="talla" />
+  <input placeholder="Código" formControlName="codigo" />
+  <select formControlName="especie">
+    @for (e of especies; track e) {
+      <option [value]="e">{{ e }}</option>
+    }
+  </select>
+  <select formControlName="tipo">
+    @for (t of tipos; track t) {
+      <option [value]="t">{{ t }}</option>
+    }
+  </select>
+  <select formControlName="categoria_id">
+    <option [ngValue]="null">Categoría</option>
+    @for (cat of categories(); track cat.id) {
+      <option [ngValue]="cat.id">{{ cat.nombre }}</option>
+    }
+  </select>
+  <select formControlName="marca_id">
+    <option [ngValue]="null">Marca</option>
+    @for (brand of brands(); track brand.id) {
+      <option [ngValue]="brand.id">{{ brand.nombre }}</option>
+    }
+  </select>
+  <select formControlName="proveedor_id">
+    <option [ngValue]="null">Proveedor predeterminado</option>
+    @for (s of suppliers(); track s.id) {
+      <option [ngValue]="s.id">{{ s.name }}</option>
+    }
+  </select>
+  <input type="number" step="0.01" placeholder="Precio compra referencial" formControlName="precio_compra" />
+  <input type="number" step="0.01" placeholder="Precio venta referencial" formControlName="precio_venta" />
+  <input type="number" step="0.01" placeholder="Stock mínimo" formControlName="stock_minimo" />
+  <input placeholder="Unidad de medida" formControlName="unidad_medida" />
+  <input placeholder="Descripción" formControlName="descripcion" />
+  <label><input type="checkbox" formControlName="requiere_receta" /> Requiere receta</label>
+  <label><input type="checkbox" formControlName="requires_batch" /> Requiere lote</label>
+  <label><input type="checkbox" formControlName="activo" /> Activo</label>
+  <button type="submit">Guardar producto</button>
+</form>
+@if (message()) {
+  <p>{{ message() }}</p>
+}
+@if (!isNew()) {
+  <p>
+    <a [routerLink]="['/app/productos', routeId(), 'lotes']">Ver lotes</a>
+    ·
+    <a routerLink="/app/ingreso-stock" [queryParams]="{ producto_id: routeId() }">Registrar ingreso de stock</a>
+  </p>
+}
+
+@if (!isNew()) {
+  <h2>Presentaciones</h2>
+  <form class="variant" [formGroup]="variantForm" (ngSubmit)="saveVariant()">
+    <input placeholder="SKU" formControlName="sku" />
+    <input placeholder="Código de barras" formControlName="barcode" />
+    <input placeholder="Presentación" formControlName="presentation" />
+    <input placeholder="Unidad" formControlName="unit" />
+    <input placeholder="Precio venta" formControlName="sale_price" />
+    <input placeholder="Costo" formControlName="cost_price" />
+    <label><input type="checkbox" formControlName="needs_review" /> Revisión</label>
+    <button type="submit">Agregar presentación</button>
+  </form>
+  <ul>
+    @for (variant of variants(); track variant.id) {
+      <li>
+        {{ variant.sku || 's/SKU' }} — {{ variant.presentation }} — {{ variant.sale_price ?? 'sin precio' }}
+        — {{ variant.on_hand ?? 0 }} und.
+        <a [routerLink]="['/app/stock', variant.id]">Lotes</a>
+      </li>
+    }
+  </ul>
+}

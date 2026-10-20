@@ -1,0 +1,77 @@
+<h1>Caja</h1>
+<p>Aquí aparecen las ventas registradas por cualquier usuario. Solo la cajera y el administrador cobran.</p>
+@if (!session()) {
+  <form [formGroup]="openForm" (ngSubmit)="open()">
+    <label>Monto inicial <input type="number" step="0.01" formControlName="opening_amount" /></label>
+    <button type="submit">Abrir caja</button>
+  </form>
+} @else {
+  <p>Caja abierta — esperado S/ {{ session().expected_amount }}</p>
+  <form [formGroup]="closeForm" (ngSubmit)="close()">
+    <label>Monto contado <input type="number" step="0.01" formControlName="counted_amount" /></label>
+    <button type="submit">Cerrar caja</button>
+  </form>
+}
+<p>Los pedidos se registran en <a routerLink="/app/ventas">Ventas</a>.</p>
+@if (message()) {
+  <p>{{ message() }}</p>
+}
+
+<div class="pos-layout">
+  <section>
+    <h2>Ventas por pagar</h2>
+    <ul class="pending">
+      @for (sale of pending(); track sale.id) {
+        <li>
+          <button type="button" (click)="select(sale)">
+            {{ sale.document }} — S/ {{ sale.total }} — {{ sale.cliente || 'sin cliente' }} — registró {{ sale.cajero || 'otro usuario' }}
+          </button>
+        </li>
+      } @empty {
+        <li>No hay ventas pendientes de cobro.</li>
+      }
+    </ul>
+  </section>
+
+  <section>
+    @if (selected(); as sale) {
+      <h2>Cobrar {{ sale.document }}</h2>
+      <ul>
+        @for (item of sale.items; track item.id) {
+          <li>{{ item.description }} ×{{ item.quantity }} — S/ {{ item.line_total }}</li>
+        }
+      </ul>
+      <p>Total S/ {{ sale.total }}</p>
+      <form [formGroup]="payForm" (ngSubmit)="pay()">
+        <label>Comprobante
+          <select formControlName="invoice_type">
+            <option value="">Ticket / voucher</option>
+            <option value="boleta">Boleta</option>
+            <option value="factura">Factura</option>
+          </select>
+        </label>
+        <label>Efectivo <input type="number" step="0.01" formControlName="efectivo" /></label>
+        <label>Yape <input type="number" step="0.01" formControlName="yape" /></label>
+        <button type="submit" [disabled]="!session()">Aprobar pago y entregar</button>
+      </form>
+    }
+
+    @if (voucher(); as ticket) {
+      <div class="voucher" id="voucher">
+        <h2>Voucher {{ ticket.document }}</h2>
+        <p>{{ ticket.fecha }} — {{ ticket.cajero }}</p>
+        @if (ticket.cliente) {
+          <p>Cliente: {{ ticket.cliente }}</p>
+        }
+        <ul>
+          @for (item of ticket.items; track $index) {
+            <li>{{ item.description }} ×{{ item.quantity }} = S/ {{ item.line_total }}</li>
+          }
+        </ul>
+        <p><strong>Total S/ {{ ticket.total }}</strong> — vuelto S/ {{ ticket.change_amount }}</p>
+        <p>Entregar producto y este voucher al cliente.</p>
+        <button type="button" (click)="print()">Imprimir voucher</button>
+      </div>
+    }
+  </section>
+</div>

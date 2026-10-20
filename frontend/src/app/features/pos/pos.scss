@@ -1,0 +1,45 @@
+.pos-layout {
+  display: grid;
+  grid-template-columns: 22rem 1fr;
+  gap: 1.25rem;
+}
+
+.pending {
+  list-style: none;
+  padding: 0;
+}
+
+.pending button,
+form button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 0.4rem;
+  cursor: pointer;
+}
+
+form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 22rem;
+}
+
+.voucher {
+  margin-top: 1rem;
+  background: #fff;
+  padding: 1rem;
+  border: 1px dashed #a1a1aa;
+}
+
+@media print {
+  :host > h1,
+  :host > p,
+  .pending,
+  form,
+  button {
+    display: none !important;
+  }
+  .voucher {
+    border: 0;
+  }
+}
