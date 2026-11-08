@@ -7,6 +7,7 @@ use App\Http\Resources\ReminderResource;
 use App\Models\Reminder;
 use App\Services\ReminderService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,11 +28,7 @@ class ReminderController extends Controller
 
         return ApiResponse::success([
             'items' => ReminderResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Recordatorios');
     }
 

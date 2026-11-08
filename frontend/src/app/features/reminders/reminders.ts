@@ -3,13 +3,14 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 @Component({
   selector: 'app-reminders',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Pager],
   template: `
     <h1>Recordatorios</h1>
-    <form [formGroup]="filters" (ngSubmit)="reload()">
+    <form [formGroup]="filters" (ngSubmit)="search()">
       <select formControlName="audience">
         <option value="">Todos</option>
         <option value="customer">Clientes</option>
@@ -39,12 +40,22 @@ import { ApiResponse } from '../../core/models/api-response';
         </li>
       }
     </ul>
+    <app-pager
+      [page]="meta().current_page"
+      [lastPage]="meta().last_page"
+      [total]="meta().total"
+      [perPage]="meta().per_page"
+      label="recordatorios"
+      (pageChange)="goTo($event)"
+      (perPageChange)="setPerPage($event)"
+    />
   `,
 })
 export class Reminders {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(FormBuilder);
   readonly items = signal<any[]>([]);
+  readonly meta = signal<PageMeta>(emptyPage());
   readonly filters = this.fb.nonNullable.group({
     audience: [''],
     type: [''],
@@ -54,13 +65,37 @@ export class Reminders {
     this.reload();
   }
 
+  search(): void {
+    this.meta.update((m) => ({ ...m, current_page: 1 }));
+    this.reload();
+  }
+
+  goTo(page: number): void {
+    if (page < 1 || page > this.meta().last_page) {
+      return;
+    }
+    this.meta.update((m) => ({ ...m, current_page: page }));
+    this.reload();
+  }
+
+  setPerPage(size: number): void {
+    this.meta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.reload();
+  }
+
   reload(): void {
     const v = this.filters.getRawValue();
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = {
+      page: String(this.meta().current_page),
+      per_page: String(this.meta().per_page),
+    };
     if (v.audience) params['audience'] = v.audience;
     if (v.type) params['type'] = v.type;
-    this.http.get<ApiResponse<{ items: any[] }>>(`${environment.apiBaseUrl}/reminders`, { params }).subscribe({
-      next: (res) => this.items.set(res.data?.items ?? []),
+    this.http.get<ApiResponse<{ items: any[]; meta: PageMeta }>>(`${environment.apiBaseUrl}/reminders`, { params }).subscribe({
+      next: (res) => {
+        this.items.set(res.data?.items ?? []);
+        this.meta.set(readPageMeta(this.meta(), res.data?.meta));
+      },
     });
   }
 

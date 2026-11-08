@@ -9,6 +9,7 @@ use App\Http\Resources\StockCountResource;
 use App\Models\StockCount;
 use App\Services\StockCountService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,15 +23,11 @@ class StockCountController extends Controller
     {
         abort_unless($request->user()?->can('inventory.count') || $request->user()?->can('inventory.view'), 403);
 
-        $page = StockCount::query()->with('user')->orderByDesc('id')->paginate(15);
+        $page = StockCount::query()->with('user')->orderByDesc('id')->paginate(PageSize::resolve($request));
 
         return ApiResponse::success([
             'items' => StockCountResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Conteos físicos');
     }
 

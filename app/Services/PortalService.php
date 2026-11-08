@@ -119,7 +119,7 @@ class PortalService
             ->with(['items', 'payments'])
             ->where('customer_id', $cliente->id)
             ->orderByDesc('id')
-            ->paginate(20);
+            ->paginate(\App\Support\PageSize::resolve());
     }
 
     public function catalog()

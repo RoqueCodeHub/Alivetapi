@@ -5,10 +5,11 @@ import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
 import { AuthUser } from '../../core/models/auth-user';
 import { ApiClientError } from '../../core/interceptors/api.interceptor';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 @Component({
   selector: 'app-users',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Pager],
   templateUrl: './users.html',
   styleUrl: './users.scss',
 })
@@ -17,6 +18,7 @@ export class Users {
   private readonly fb = inject(FormBuilder);
 
   readonly users = signal<AuthUser[]>([]);
+  readonly meta = signal<PageMeta>(emptyPage());
   readonly roles = signal<string[]>([]);
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
@@ -35,11 +37,32 @@ export class Users {
     });
   }
 
+  goTo(page: number): void {
+    if (page < 1 || page > this.meta().last_page) {
+      return;
+    }
+    this.meta.update((m) => ({ ...m, current_page: page }));
+    this.reload();
+  }
+
+  setPerPage(size: number): void {
+    this.meta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.reload();
+  }
+
   reload(): void {
     this.http
-      .get<ApiResponse<{ items: AuthUser[] }>>(`${environment.apiBaseUrl}/users`)
+      .get<ApiResponse<{ items: AuthUser[]; meta: PageMeta }>>(`${environment.apiBaseUrl}/users`, {
+        params: {
+          page: String(this.meta().current_page),
+          per_page: String(this.meta().per_page),
+        },
+      })
       .subscribe({
-        next: (res) => this.users.set(res.data?.items ?? []),
+        next: (res) => {
+          this.users.set(res.data?.items ?? []);
+          this.meta.set(readPageMeta(this.meta(), res.data?.meta));
+        },
         error: (err: unknown) => {
           this.error.set(err instanceof ApiClientError ? err.message : 'Error al cargar');
         },

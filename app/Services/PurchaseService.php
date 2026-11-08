@@ -11,6 +11,7 @@ use App\Models\PurchasePayment;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Variante;
+use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
@@ -26,7 +27,7 @@ class PurchaseService
             ->with(['supplier', 'items.variante.producto'])
             ->when($status, fn ($q) => $q->where('status', $status))
             ->orderByDesc('id')
-            ->paginate(15);
+            ->paginate(PageSize::resolve());
     }
 
     public function create(array $data, User $user): Purchase
@@ -175,7 +176,7 @@ class PurchaseService
             ->where('payment_status', '!=', Purchase::PAYMENT_PAGADO)
             ->orderBy('due_date')
             ->orderBy('id')
-            ->paginate(15);
+            ->paginate(PageSize::resolve());
     }
 
     public function costHistory(Variante $variante)

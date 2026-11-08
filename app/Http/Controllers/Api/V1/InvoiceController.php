@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\Sale;
 use App\Services\BillingService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,11 +26,7 @@ class InvoiceController extends Controller
 
         return ApiResponse::success([
             'items' => InvoiceResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Comprobantes');
     }
 

@@ -10,6 +10,7 @@ use App\Models\Variante;
 use App\Services\InventoryImportService;
 use App\Services\InventoryReviewService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -55,11 +56,7 @@ class InventoryImportController extends Controller
 
         return ApiResponse::success([
             'items' => VariantResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Pendientes de revisión');
     }
 

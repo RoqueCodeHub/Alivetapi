@@ -16,6 +16,7 @@ use App\Models\Pet;
 use App\Services\AuthService;
 use App\Services\PortalService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -112,11 +113,7 @@ class PortalController extends Controller
 
         return ApiResponse::success([
             'items' => SaleResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Compras');
     }
 

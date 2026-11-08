@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\LoginLog;
 use App\Services\BackupService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,7 +24,7 @@ class AuditController extends Controller
             ->with('user')
             ->when($request->query('model'), fn ($q, $m) => $q->where('model', $m))
             ->orderByDesc('id')
-            ->paginate(30);
+            ->paginate(PageSize::resolve($request));
 
         return ApiResponse::success([
             'items' => $page->getCollection()->map(fn (AuditLog $log) => [
@@ -37,18 +38,14 @@ class AuditController extends Controller
                 'ip' => $log->ip,
                 'created_at' => optional($log->created_at)?->toDateTimeString(),
             ])->values(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Auditoría');
     }
 
     public function logins(Request $request): JsonResponse
     {
         abort_unless($request->user()?->can('audit.view'), 403);
-        $page = LoginLog::query()->with('user')->orderByDesc('id')->paginate(30);
+        $page = LoginLog::query()->with('user')->orderByDesc('id')->paginate(PageSize::resolve($request));
 
         return ApiResponse::success([
             'items' => $page->getCollection()->map(fn (LoginLog $log) => [
@@ -59,11 +56,7 @@ class AuditController extends Controller
                 'ip' => $log->ip,
                 'created_at' => optional($log->created_at)?->toDateTimeString(),
             ])->values(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Accesos');
     }
 

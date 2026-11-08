@@ -9,6 +9,7 @@ use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\User;
 use App\Services\Invoicing\PseGateway;
+use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
@@ -36,7 +37,7 @@ class BillingService
 
     public function paginate(): LengthAwarePaginator
     {
-        return Invoice::query()->with(['sale', 'user', 'related'])->orderByDesc('id')->paginate(20);
+        return Invoice::query()->with(['sale', 'user', 'related'])->orderByDesc('id')->paginate(PageSize::resolve());
     }
 
     public function series(): array

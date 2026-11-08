@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Variante;
+use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class InventoryReviewService
@@ -13,7 +14,7 @@ class InventoryReviewService
             ->with(['producto.categoria', 'batches'])
             ->where('needs_review', true)
             ->orderByDesc('updated_at')
-            ->paginate(20);
+            ->paginate(PageSize::resolve());
     }
 
     public function resolve(Variante $variante, array $data): Variante

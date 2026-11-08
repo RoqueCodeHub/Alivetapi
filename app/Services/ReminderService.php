@@ -10,6 +10,7 @@ use App\Models\Deworming;
 use App\Models\Reminder;
 use App\Models\Vaccination;
 use App\Mail\ReminderMail;
+use App\Support\PageSize;
 use Illuminate\Support\Facades\Mail;
 
 class ReminderService
@@ -75,7 +76,7 @@ class ReminderService
             })
             ->orderByDesc('due_at')
             ->orderByDesc('id')
-            ->paginate(30);
+            ->paginate(PageSize::resolve());
     }
 
     public function dismiss(Reminder $reminder): Reminder

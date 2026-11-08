@@ -6,6 +6,7 @@ use App\Models\Batch;
 use App\Models\Categoria;
 use App\Models\Producto;
 use App\Models\Variante;
+use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -17,8 +18,7 @@ class ProductService
     public function search(Request $request): LengthAwarePaginator
     {
         $query = $this->filteredQuery($request);
-        $perPage = (int) $request->query('per_page', 15);
-        $perPage = $perPage > 0 ? min($perPage, 100) : 15;
+        $perPage = PageSize::resolve($request);
 
         if ($request->boolean('grouped')) {
             return $this->paginateGrouped($query, $request, $perPage);

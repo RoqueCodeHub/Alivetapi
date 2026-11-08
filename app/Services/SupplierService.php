@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Persona;
 use App\Models\Proveedor;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -12,6 +13,11 @@ class SupplierService
     public function all(): Collection
     {
         return Proveedor::query()->with('persona')->orderBy('id')->get();
+    }
+
+    public function paginate(int $perPage): LengthAwarePaginator
+    {
+        return Proveedor::query()->with('persona')->orderBy('id')->paginate($perPage);
     }
 
     public function create(array $data): Proveedor

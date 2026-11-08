@@ -4,10 +4,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 @Component({
   selector: 'app-customer-detail',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, Pager],
   template: `
     <p><a routerLink="/app/clientes">Volver</a></p>
     <h1>{{ customer()?.name }}</h1>
@@ -53,6 +54,15 @@ import { ApiResponse } from '../../core/models/api-response';
         </li>
       }
     </ul>
+    <app-pager
+      [page]="salesMeta().current_page"
+      [lastPage]="salesMeta().last_page"
+      [total]="salesMeta().total"
+      [perPage]="salesMeta().per_page"
+      label="compras"
+      (pageChange)="goSales($event)"
+      (perPageChange)="setSalesPerPage($event)"
+    />
   `,
 })
 export class CustomerDetail {
@@ -61,6 +71,7 @@ export class CustomerDetail {
   private readonly fb = inject(FormBuilder);
   readonly customer = signal<any>(null);
   readonly sales = signal<any[]>([]);
+  readonly salesMeta = signal<PageMeta>(emptyPage());
   readonly portalMsg = signal('');
   readonly portalForm = this.fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
@@ -85,9 +96,37 @@ export class CustomerDetail {
     this.http.get<ApiResponse<any>>(`${environment.apiBaseUrl}/customers/${id}`).subscribe({
       next: (res) => this.customer.set(res.data),
     });
-    this.http.get<ApiResponse<{ items: any[] }>>(`${environment.apiBaseUrl}/customers/${id}/purchases`).subscribe({
-      next: (res) => this.sales.set(res.data?.items ?? []),
-    });
+    this.loadSales();
+  }
+
+  goSales(page: number): void {
+    if (page < 1 || page > this.salesMeta().last_page) {
+      return;
+    }
+    this.salesMeta.update((m) => ({ ...m, current_page: page }));
+    this.loadSales();
+  }
+
+  setSalesPerPage(size: number): void {
+    this.salesMeta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.loadSales();
+  }
+
+  private loadSales(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    this.http
+      .get<ApiResponse<{ items: any[]; meta: PageMeta }>>(`${environment.apiBaseUrl}/customers/${id}/purchases`, {
+        params: {
+          page: String(this.salesMeta().current_page),
+          per_page: String(this.salesMeta().per_page),
+        },
+      })
+      .subscribe({
+        next: (res) => {
+          this.sales.set(res.data?.items ?? []);
+          this.salesMeta.set(readPageMeta(this.salesMeta(), res.data?.meta));
+        },
+      });
   }
 
   enablePortal(): void {

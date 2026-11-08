@@ -8,6 +8,7 @@ use App\Models\Producto;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Variante;
+use App\Support\PageSize;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -354,7 +355,7 @@ class StockService
                 });
             })
             ->orderBy('id')
-            ->paginate(20);
+            ->paginate(PageSize::resolve());
     }
 
     public function variantStock(Variante $variante): array

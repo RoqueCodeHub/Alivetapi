@@ -8,7 +8,9 @@ use App\Http\Requests\Catalog\UpdateBrandRequest;
 use App\Models\Marca;
 use App\Services\BrandService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class BrandController extends Controller
 {
@@ -16,11 +18,20 @@ class BrandController extends Controller
     {
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Marca::class);
 
-        return ApiResponse::success($this->brands->all(), 'Marcas');
+        if (! $request->hasAny(['page', 'per_page'])) {
+            return ApiResponse::success($this->brands->all(), 'Marcas');
+        }
+
+        $page = $this->brands->paginate(PageSize::resolve($request));
+
+        return ApiResponse::success([
+            'items' => $page->getCollection()->values(),
+            'meta' => PageSize::meta($page),
+        ], 'Marcas');
     }
 
     public function store(StoreBrandRequest $request): JsonResponse

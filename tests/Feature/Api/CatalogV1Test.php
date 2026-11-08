@@ -115,13 +115,35 @@ class CatalogV1Test extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.meta.total', 1)
+            ->assertJsonPath('data.meta.per_page', 10)
             ->assertJsonPath('data.items.0.nombre', 'Filtro hija '.$suffix)
             ->assertJsonPath('data.items.0.parent.nombre', 'Filtro raiz '.$suffix);
 
         $this->withHeaders($headers)
             ->getJson('/api/v1/categories?page=1&parent_id=root&q='.urlencode('Filtro raiz '.$suffix))
             ->assertOk()
-            ->assertJsonPath('data.meta.total', 1);
+            ->assertJsonPath('data.meta.total', 1)
+            ->assertJsonPath('data.meta.per_page', 10);
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/categories?page=1&per_page=20&q='.urlencode('Filtro hija '.$suffix))
+            ->assertOk()
+            ->assertJsonPath('data.meta.per_page', 20);
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/categories?page=1&per_page=15&q='.urlencode('Filtro hija '.$suffix))
+            ->assertOk()
+            ->assertJsonPath('data.meta.per_page', 10);
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/products?per_page=50')
+            ->assertOk()
+            ->assertJsonPath('data.meta.per_page', 50);
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/products?per_page=25')
+            ->assertOk()
+            ->assertJsonPath('data.meta.per_page', 10);
 
         $this->withHeaders($headers)
             ->getJson('/api/v1/categories')

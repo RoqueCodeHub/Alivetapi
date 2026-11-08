@@ -17,6 +17,7 @@ use App\Models\Vaccination;
 use App\Models\VetService;
 use App\Services\ClinicService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,12 +27,21 @@ class ClinicController extends Controller
     {
     }
 
-    public function services(): JsonResponse
+    public function services(Request $request): JsonResponse
     {
         $this->authorize('viewAny', VetService::class);
         $this->clinic->seedCatalog();
 
-        return ApiResponse::success(VetServiceResource::collection($this->clinic->services()), 'Servicios');
+        if (! $request->hasAny(['page', 'per_page'])) {
+            return ApiResponse::success(VetServiceResource::collection($this->clinic->services()), 'Servicios');
+        }
+
+        $page = $this->clinic->paginateServices(PageSize::resolve($request));
+
+        return ApiResponse::success([
+            'items' => VetServiceResource::collection($page->getCollection())->resolve(),
+            'meta' => PageSize::meta($page),
+        ], 'Servicios');
     }
 
     public function storeService(Request $request): JsonResponse
@@ -75,11 +85,7 @@ class ClinicController extends Controller
 
         return ApiResponse::success([
             'items' => AppointmentResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Agenda');
     }
 

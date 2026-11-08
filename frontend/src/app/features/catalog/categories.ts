@@ -3,6 +3,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 interface Category {
   id: number;
@@ -14,16 +15,9 @@ interface Category {
   children?: Category[];
 }
 
-interface PageMeta {
-  current_page: number;
-  last_page: number;
-  total: number;
-  per_page: number;
-}
-
 @Component({
   selector: 'app-categories',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Pager],
   templateUrl: './categories.html',
   styleUrl: './categories.scss',
 })
@@ -32,7 +26,7 @@ export class Categories {
   private readonly fb = inject(FormBuilder);
   readonly items = signal<Category[]>([]);
   readonly parents = signal<Category[]>([]);
-  readonly meta = signal<PageMeta>({ current_page: 1, last_page: 1, total: 0, per_page: 15 });
+  readonly meta = signal<PageMeta>(emptyPage());
   readonly form = this.fb.group({
     nombre: ['', Validators.required],
     parent_id: [null as number | null],
@@ -42,7 +36,6 @@ export class Categories {
     q: [''],
     parent_id: [''],
     activo: [''],
-    per_page: ['15'],
   });
 
   constructor() {
@@ -63,11 +56,16 @@ export class Categories {
     this.reload();
   }
 
+  setPerPage(size: number): void {
+    this.meta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.reload();
+  }
+
   reload(): void {
     const value = this.filters.getRawValue();
     const params: Record<string, string> = {
       page: String(this.meta().current_page),
-      per_page: value.per_page,
+      per_page: String(this.meta().per_page),
     };
     if (value.q.trim()) {
       params['q'] = value.q.trim();
@@ -83,9 +81,7 @@ export class Categories {
       .subscribe({
         next: (res) => {
           this.items.set(res.data?.items ?? []);
-          if (res.data?.meta) {
-            this.meta.set(res.data.meta);
-          }
+          this.meta.set(readPageMeta(this.meta(), res.data?.meta));
         },
       });
   }

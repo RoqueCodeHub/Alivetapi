@@ -44,11 +44,6 @@
   <label><input type="checkbox" formControlName="low_stock" /> Stock bajo</label>
   <label><input type="checkbox" formControlName="expired" /> Vencidos</label>
   <label><input type="checkbox" formControlName="expiring" /> Por vencer</label>
-  <select formControlName="per_page">
-    <option value="15">15</option>
-    <option value="25">25</option>
-    <option value="50">50</option>
-  </select>
   <button type="submit">Filtrar</button>
 </form>
 
@@ -87,8 +82,12 @@
   }
 </div>
 
-<div class="pager">
-  <button type="button" [disabled]="meta().current_page <= 1" (click)="goTo(meta().current_page - 1)">Anterior</button>
-  <span>Página {{ meta().current_page }} de {{ meta().last_page }} — {{ meta().total }} productos</span>
-  <button type="button" [disabled]="meta().current_page >= meta().last_page" (click)="goTo(meta().current_page + 1)">Siguiente</button>
-</div>
+<app-pager
+  [page]="meta().current_page"
+  [lastPage]="meta().last_page"
+  [total]="meta().total"
+  [perPage]="meta().per_page"
+  label="productos"
+  (pageChange)="goTo($event)"
+  (perPageChange)="setPerPage($event)"
+/>

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Hash;
 
@@ -13,7 +14,7 @@ class UserService
         return User::query()
             ->with('roles')
             ->orderBy('name')
-            ->paginate(15);
+            ->paginate(PageSize::resolve());
     }
 
     public function create(array $data): User

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Cliente;
 use App\Models\Persona;
 use App\Models\Sale;
+use App\Support\PageSize;
 use Illuminate\Support\Facades\DB;
 
 class CustomerService
@@ -25,7 +26,7 @@ class CustomerService
                 });
             })
             ->orderByDesc('id')
-            ->paginate(20);
+            ->paginate(PageSize::resolve());
     }
 
     public function create(array $data): Cliente
@@ -92,7 +93,7 @@ class CustomerService
             ->with(['items', 'payments', 'user', 'pet'])
             ->where('customer_id', $cliente->id)
             ->orderByDesc('id')
-            ->paginate(20);
+            ->paginate(PageSize::resolve());
     }
 
     /**

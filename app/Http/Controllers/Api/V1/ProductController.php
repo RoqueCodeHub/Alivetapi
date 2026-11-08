@@ -13,6 +13,7 @@ use App\Models\Producto;
 use App\Models\Variante;
 use App\Services\ProductService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,11 +31,7 @@ class ProductController extends Controller
 
         return ApiResponse::success([
             'items' => ProductResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Productos');
     }
 

@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
 import { AuthService } from '../../core/services/auth.service';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 interface CatalogHit {
   variant_id: number;
@@ -18,7 +19,7 @@ interface CatalogHit {
 
 @Component({
   selector: 'app-sales',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, Pager],
   templateUrl: './sales.html',
   styleUrl: './sales.scss',
 })
@@ -31,7 +32,7 @@ export class Sales {
   readonly cart = signal<any[]>([]);
   readonly notes = signal('');
   readonly message = signal('');
-  readonly meta = signal({ current_page: 1, last_page: 1, total: 0, per_page: 12 });
+  readonly meta = signal<PageMeta>(emptyPage());
   readonly filters = this.fb.nonNullable.group({
     q: [''],
     category_id: [''],
@@ -57,11 +58,16 @@ export class Sales {
     this.reload();
   }
 
+  setPerPage(size: number): void {
+    this.meta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.reload();
+  }
+
   reload(): void {
     const value = this.filters.getRawValue();
     const params: Record<string, string> = {
       page: String(this.meta().current_page),
-      per_page: '12',
+      per_page: String(this.meta().per_page),
     };
     if (value.q.trim()) {
       params['q'] = value.q.trim();
@@ -74,9 +80,7 @@ export class Sales {
       .subscribe({
         next: (res) => {
           this.hits.set(res.data?.items ?? []);
-          if (res.data?.meta) {
-            this.meta.set(res.data.meta);
-          }
+          this.meta.set(readPageMeta(this.meta(), res.data?.meta));
         },
       });
   }

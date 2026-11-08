@@ -4,10 +4,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 @Component({
   selector: 'app-portal-home',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, Pager],
   template: `
     <h1>Hola {{ me()?.customer?.name }}</h1>
     <h2>Mascotas</h2>
@@ -51,6 +52,15 @@ import { ApiResponse } from '../../core/models/api-response';
         <li>{{ sale.document }} — S/ {{ sale.total }} — {{ sale.status }}</li>
       }
     </ul>
+    <app-pager
+      [page]="purchaseMeta().current_page"
+      [lastPage]="purchaseMeta().last_page"
+      [total]="purchaseMeta().total"
+      [perPage]="purchaseMeta().per_page"
+      label="compras"
+      (pageChange)="goPurchases($event)"
+      (perPageChange)="setPurchasePerPage($event)"
+    />
   `,
 })
 export class PortalHome {
@@ -60,6 +70,7 @@ export class PortalHome {
   readonly upcoming = signal<any[]>([]);
   readonly services = signal<any[]>([]);
   readonly purchases = signal<any[]>([]);
+  readonly purchaseMeta = signal<PageMeta>(emptyPage());
   readonly message = signal('');
   readonly form = this.fb.nonNullable.group({
     pet_id: ['', Validators.required],
@@ -77,9 +88,36 @@ export class PortalHome {
     this.http.get<ApiResponse<any[]>>(`${environment.apiBaseUrl}/portal/services`).subscribe({
       next: (res) => this.services.set(res.data ?? []),
     });
-    this.http.get<ApiResponse<{ items: any[] }>>(`${environment.apiBaseUrl}/portal/purchases`).subscribe({
-      next: (res) => this.purchases.set(res.data?.items ?? []),
-    });
+    this.loadPurchases();
+  }
+
+  goPurchases(page: number): void {
+    if (page < 1 || page > this.purchaseMeta().last_page) {
+      return;
+    }
+    this.purchaseMeta.update((m) => ({ ...m, current_page: page }));
+    this.loadPurchases();
+  }
+
+  setPurchasePerPage(size: number): void {
+    this.purchaseMeta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.loadPurchases();
+  }
+
+  private loadPurchases(): void {
+    this.http
+      .get<ApiResponse<{ items: any[]; meta: PageMeta }>>(`${environment.apiBaseUrl}/portal/purchases`, {
+        params: {
+          page: String(this.purchaseMeta().current_page),
+          per_page: String(this.purchaseMeta().per_page),
+        },
+      })
+      .subscribe({
+        next: (res) => {
+          this.purchases.set(res.data?.items ?? []);
+          this.purchaseMeta.set(readPageMeta(this.purchaseMeta(), res.data?.meta));
+        },
+      });
   }
 
   request(): void {

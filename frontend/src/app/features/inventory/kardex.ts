@@ -1,12 +1,13 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { Pager, pageWindow } from '../../shared/pager';
 
 @Component({
   selector: 'app-kardex',
-  imports: [RouterLink],
+  imports: [RouterLink, Pager],
   template: `
     <p><a routerLink="/app/stock">Volver al stock</a></p>
     <h1>Kardex</h1>
@@ -24,7 +25,7 @@ import { ApiResponse } from '../../core/models/api-response';
         </tr>
       </thead>
       <tbody>
-        @for (line of lines(); track line.id) {
+        @for (line of view().rows; track line.id) {
           <tr>
             <td>{{ line.fecha }}</td>
             <td>{{ line.usuario }}</td>
@@ -37,18 +38,35 @@ import { ApiResponse } from '../../core/models/api-response';
         }
       </tbody>
     </table>
+    <app-pager
+      [page]="view().meta.current_page"
+      [lastPage]="view().meta.last_page"
+      [total]="view().meta.total"
+      [perPage]="pageSize()"
+      label="movimientos"
+      (pageChange)="page.set($event)"
+      (perPageChange)="setPerPage($event)"
+    />
   `,
 })
 export class Kardex {
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
   readonly lines = signal<any[]>([]);
+  readonly page = signal(1);
+  readonly pageSize = signal(10);
+  readonly view = computed(() => pageWindow(this.lines(), this.page(), this.pageSize()));
 
   constructor() {
     const id = this.route.snapshot.paramMap.get('id');
     this.http.get<ApiResponse<any[]>>(`${environment.apiBaseUrl}/variants/${id}/kardex`).subscribe({
       next: (res) => this.lines.set(res.data ?? []),
     });
+  }
+
+  setPerPage(size: number): void {
+    this.pageSize.set(size);
+    this.page.set(1);
   }
 
   exportCsv(): void {

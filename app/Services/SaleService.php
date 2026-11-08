@@ -33,8 +33,7 @@ class SaleService
     {
         $request ??= request();
         $q = trim((string) $request->query('q', ''));
-        $perPage = (int) $request->query('per_page', 15);
-        $perPage = $perPage > 0 ? min($perPage, 100) : 15;
+        $perPage = \App\Support\PageSize::resolve($request);
 
         return Sale::query()
             ->with(['user', 'items', 'payments', 'customer', 'pet'])
@@ -68,8 +67,7 @@ class SaleService
     public function catalog(Request $request): LengthAwarePaginator
     {
         $q = trim((string) $request->query('q', $request->query('nombre', '')));
-        $perPage = (int) $request->query('per_page', 12);
-        $perPage = $perPage > 0 ? min($perPage, 48) : 12;
+        $perPage = \App\Support\PageSize::resolve($request);
 
         $page = Variante::query()
             ->with(['producto.categoria', 'batches'])

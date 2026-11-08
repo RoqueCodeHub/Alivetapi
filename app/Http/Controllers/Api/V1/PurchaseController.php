@@ -11,6 +11,7 @@ use App\Models\Purchase;
 use App\Models\Variante;
 use App\Services\PurchaseService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,11 +29,7 @@ class PurchaseController extends Controller
 
         return ApiResponse::success([
             'items' => PurchaseResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Compras');
     }
 
@@ -87,11 +84,7 @@ class PurchaseController extends Controller
 
         return ApiResponse::success([
             'items' => PurchaseResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Cuentas por pagar');
     }
 

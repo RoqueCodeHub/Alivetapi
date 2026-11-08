@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Vaccination;
 use App\Models\Variante;
 use App\Models\VetService;
+use App\Support\PageSize;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -40,6 +41,11 @@ class ClinicService
         return VetService::query()->orderBy('name')->get();
     }
 
+    public function paginateServices(int $perPage)
+    {
+        return VetService::query()->orderBy('name')->paginate($perPage);
+    }
+
     public function createService(array $data): VetService
     {
         $data['activo'] = $data['activo'] ?? true;
@@ -62,7 +68,7 @@ class ClinicService
             ->when($staffId, fn ($q) => $q->where('staff_user_id', $staffId))
             ->when($status, fn ($q) => $q->where('status', $status))
             ->orderBy('scheduled_at')
-            ->paginate(30);
+            ->paginate(PageSize::resolve());
     }
 
     public function createAppointment(array $data): Appointment

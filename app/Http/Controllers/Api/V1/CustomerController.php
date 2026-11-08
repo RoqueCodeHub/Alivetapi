@@ -13,6 +13,7 @@ use App\Models\Cliente;
 use App\Services\CustomerService;
 use App\Services\PetService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,11 +33,7 @@ class CustomerController extends Controller
 
         return ApiResponse::success([
             'items' => CustomerResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Clientes');
     }
 
@@ -73,11 +70,7 @@ class CustomerController extends Controller
 
         return ApiResponse::success([
             'items' => SaleResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Compras del cliente');
     }
 

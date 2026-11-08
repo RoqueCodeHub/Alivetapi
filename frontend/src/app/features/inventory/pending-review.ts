@@ -4,6 +4,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 interface PendingVariant {
   id: number;
@@ -18,7 +19,7 @@ interface PendingVariant {
 
 @Component({
   selector: 'app-pending-review',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, Pager],
   template: `
     <h1>Pendientes de revisión</h1>
     <p>Corrige los registros importados antes de la puesta en marcha.</p>
@@ -45,12 +46,22 @@ interface PendingVariant {
         </li>
       }
     </ul>
+    <app-pager
+      [page]="meta().current_page"
+      [lastPage]="meta().last_page"
+      [total]="meta().total"
+      [perPage]="meta().per_page"
+      label="pendientes"
+      (pageChange)="goTo($event)"
+      (perPageChange)="setPerPage($event)"
+    />
   `,
 })
 export class PendingReview {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(FormBuilder);
   readonly items = signal<PendingVariant[]>([]);
+  readonly meta = signal<PageMeta>(emptyPage());
   readonly message = signal('');
   private readonly forms = new Map<number, FormGroup>();
 
@@ -62,11 +73,30 @@ export class PendingReview {
     return this.forms.get(id)!;
   }
 
+  goTo(page: number): void {
+    if (page < 1 || page > this.meta().last_page) {
+      return;
+    }
+    this.meta.update((m) => ({ ...m, current_page: page }));
+    this.load();
+  }
+
+  setPerPage(size: number): void {
+    this.meta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.load();
+  }
+
   load(): void {
     this.http
-      .get<ApiResponse<{ items: PendingVariant[] }>>(`${environment.apiBaseUrl}/inventory/pending-review`)
+      .get<ApiResponse<{ items: PendingVariant[]; meta: PageMeta }>>(`${environment.apiBaseUrl}/inventory/pending-review`, {
+        params: {
+          page: String(this.meta().current_page),
+          per_page: String(this.meta().per_page),
+        },
+      })
       .subscribe({
         next: (res) => {
+          this.meta.set(readPageMeta(this.meta(), res.data?.meta));
           const items = res.data?.items ?? [];
           this.forms.clear();
           for (const item of items) {

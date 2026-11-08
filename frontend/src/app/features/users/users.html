@@ -52,3 +52,12 @@
     }
   </tbody>
 </table>
+<app-pager
+  [page]="meta().current_page"
+  [lastPage]="meta().last_page"
+  [total]="meta().total"
+  [perPage]="meta().per_page"
+  label="usuarios"
+  (pageChange)="goTo($event)"
+  (perPageChange)="setPerPage($event)"
+/>

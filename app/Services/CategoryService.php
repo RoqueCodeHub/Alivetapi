@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\StockException;
 use App\Models\Categoria;
+use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -22,8 +23,7 @@ class CategoryService
     public function paginate(Request $request): LengthAwarePaginator
     {
         $parentId = $request->query('parent_id');
-        $perPage = (int) $request->query('per_page', 15);
-        $perPage = $perPage > 0 ? min($perPage, 100) : 15;
+        $perPage = PageSize::resolve($request);
 
         return Categoria::query()
             ->with('parent')

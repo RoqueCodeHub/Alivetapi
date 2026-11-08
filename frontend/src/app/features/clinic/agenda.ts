@@ -4,13 +4,14 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 @Component({
   selector: 'app-agenda',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, Pager],
   template: `
     <h1>Agenda</h1>
-    <form [formGroup]="filters" (ngSubmit)="reload()">
+    <form [formGroup]="filters" (ngSubmit)="search()">
       <input type="date" formControlName="date" />
       <select formControlName="status">
         <option value="">Estado</option>
@@ -46,6 +47,15 @@ import { ApiResponse } from '../../core/models/api-response';
         </li>
       }
     </ul>
+    <app-pager
+      [page]="meta().current_page"
+      [lastPage]="meta().last_page"
+      [total]="meta().total"
+      [perPage]="meta().per_page"
+      label="citas"
+      (pageChange)="goTo($event)"
+      (perPageChange)="setPerPage($event)"
+    />
     @if (message()) {
       <p>{{ message() }}</p>
     }
@@ -55,6 +65,7 @@ export class Agenda {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(FormBuilder);
   readonly items = signal<any[]>([]);
+  readonly meta = signal<PageMeta>(emptyPage());
   readonly services = signal<any[]>([]);
   readonly message = signal('');
   readonly filters = this.fb.nonNullable.group({ date: [''], status: [''] });
@@ -72,13 +83,37 @@ export class Agenda {
     this.reload();
   }
 
+  search(): void {
+    this.meta.update((m) => ({ ...m, current_page: 1 }));
+    this.reload();
+  }
+
+  goTo(page: number): void {
+    if (page < 1 || page > this.meta().last_page) {
+      return;
+    }
+    this.meta.update((m) => ({ ...m, current_page: page }));
+    this.reload();
+  }
+
+  setPerPage(size: number): void {
+    this.meta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.reload();
+  }
+
   reload(): void {
     const v = this.filters.getRawValue();
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = {
+      page: String(this.meta().current_page),
+      per_page: String(this.meta().per_page),
+    };
     if (v.date) params['date'] = v.date;
     if (v.status) params['status'] = v.status;
-    this.http.get<ApiResponse<{ items: any[] }>>(`${environment.apiBaseUrl}/appointments`, { params }).subscribe({
-      next: (res) => this.items.set(res.data?.items ?? []),
+    this.http.get<ApiResponse<{ items: any[]; meta: PageMeta }>>(`${environment.apiBaseUrl}/appointments`, { params }).subscribe({
+      next: (res) => {
+        this.items.set(res.data?.items ?? []);
+        this.meta.set(readPageMeta(this.meta(), res.data?.meta));
+      },
     });
   }
 

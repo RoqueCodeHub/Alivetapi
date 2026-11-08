@@ -11,6 +11,7 @@ use App\Http\Resources\SaleResource;
 use App\Models\Sale;
 use App\Services\SaleService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,12 +29,7 @@ class SaleController extends Controller
 
         return ApiResponse::success([
             'items' => $page->items(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-                'per_page' => $page->perPage(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Catálogo de venta');
     }
 
@@ -45,11 +41,7 @@ class SaleController extends Controller
 
         return ApiResponse::success([
             'items' => SaleResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Ventas');
     }
 

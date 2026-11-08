@@ -9,6 +9,7 @@ use App\Http\Resources\CategoryResource;
 use App\Models\Categoria;
 use App\Services\CategoryService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -33,12 +34,7 @@ class CategoryController extends Controller
 
         return ApiResponse::success([
             'items' => CategoryResource::collection($page->getCollection())->resolve(),
-            'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
-                'per_page' => $page->perPage(),
-            ],
+            'meta' => PageSize::meta($page),
         ], 'Categorías');
     }
 

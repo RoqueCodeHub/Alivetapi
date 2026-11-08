@@ -9,7 +9,9 @@ use App\Http\Resources\SupplierResource;
 use App\Models\Proveedor;
 use App\Services\SupplierService;
 use App\Support\ApiResponse;
+use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SupplierController extends Controller
 {
@@ -17,14 +19,23 @@ class SupplierController extends Controller
     {
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Proveedor::class);
 
-        return ApiResponse::success(
-            SupplierResource::collection($this->suppliers->all())->resolve(),
-            'Proveedores'
-        );
+        if (! $request->hasAny(['page', 'per_page'])) {
+            return ApiResponse::success(
+                SupplierResource::collection($this->suppliers->all())->resolve(),
+                'Proveedores'
+            );
+        }
+
+        $page = $this->suppliers->paginate(PageSize::resolve($request));
+
+        return ApiResponse::success([
+            'items' => SupplierResource::collection($page->getCollection())->resolve(),
+            'meta' => PageSize::meta($page),
+        ], 'Proveedores');
     }
 
     public function store(StoreSupplierRequest $request): JsonResponse

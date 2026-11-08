@@ -4,6 +4,7 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../../core/models/api-response';
+import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 
 interface PresentationRow {
   product_id: number;
@@ -17,15 +18,9 @@ interface PresentationRow {
   stock_status: 'sin_stock' | 'bajo' | 'ok';
 }
 
-interface PageMeta {
-  current_page: number;
-  last_page: number;
-  total: number;
-}
-
 @Component({
   selector: 'app-products',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, Pager],
   templateUrl: './products.html',
   styleUrl: './products.scss',
 })
@@ -36,7 +31,7 @@ export class Products {
   readonly categories = signal<{ id: number; nombre: string }[]>([]);
   readonly brands = signal<{ id: number; nombre: string }[]>([]);
   readonly suppliers = signal<{ id: number; name: string }[]>([]);
-  readonly meta = signal<PageMeta>({ current_page: 1, last_page: 1, total: 0 });
+  readonly meta = signal<PageMeta>(emptyPage());
   readonly especies = ['Perro', 'Gato', 'Perro/Gato', 'Bovino', 'Equino', 'Aves', 'Porcino', 'Múltiple'];
   readonly tipos = [
     'Accesorio',
@@ -60,7 +55,6 @@ export class Products {
     low_stock: [false],
     expired: [false],
     expiring: [false],
-    per_page: ['15'],
   });
 
   constructor() {
@@ -89,6 +83,11 @@ export class Products {
     this.reload();
   }
 
+  setPerPage(size: number): void {
+    this.meta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
+    this.reload();
+  }
+
   money(value: number): string {
     return Number(value || 0).toFixed(2);
   }
@@ -107,7 +106,7 @@ export class Products {
     const value = this.filters.getRawValue();
     const params: Record<string, string> = {
       page: String(this.meta().current_page),
-      per_page: value.per_page,
+      per_page: String(this.meta().per_page),
     };
     for (const key of ['q', 'category_id', 'especie', 'tipo', 'proveedor_id', 'marca_id', 'activo'] as const) {
       if (value[key]) {
@@ -122,9 +121,7 @@ export class Products {
       .subscribe({
         next: (res) => {
           this.items.set(this.flattenPresentations(res.data?.items ?? []));
-          if (res.data?.meta) {
-            this.meta.set(res.data.meta);
-          }
+          this.meta.set(readPageMeta(this.meta(), res.data?.meta));
         },
       });
   }
