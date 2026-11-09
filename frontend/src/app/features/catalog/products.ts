@@ -131,9 +131,13 @@ export class Products {
     for (const product of products) {
       const variants = Array.isArray(product.variantes) && product.variantes.length ? product.variantes : [null];
       for (const variant of variants) {
-        const onHand = variant
-          ? Number(variant.on_hand ?? (variant.batches ?? []).reduce((sum: number, b: any) => sum + Number(b.quantity || 0), 0))
-          : Number(product.stock_actual || 0);
+        const fromLots = variant
+          ? Number(
+              variant.on_hand ??
+                (variant.batches ?? []).reduce((sum: number, b: any) => sum + Number(b.quantity || 0), 0)
+            )
+          : null;
+        const onHand = fromLots === null || Number.isNaN(fromLots) ? Number(product.stock_actual || 0) : fromLots;
         const min = Number(product.stock_minimo || 0);
         const price = Number(variant?.sale_price || product.precio_venta || 0);
         let stock_status: PresentationRow['stock_status'] = 'ok';

@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\StockException;
 use App\Http\Controllers\Controller;
 use App\Models\MovimientoStock;
 use App\Models\Producto;
+use App\Models\Variante;
+use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -13,7 +16,7 @@ class MovimientoStockController extends Controller
     // Listar movimientos (con filtros opcionales)
     public function index(Request $request)
     {
-        $query = MovimientoStock::with(['producto:id,nombre,codigo', 'user:id,name'])
+        $query = MovimientoStock::with(['producto:id,nombre,codigo', 'variante:id,presentation,sku', 'user:id,name'])
             ->orderBy('created_at', 'desc');
 
         if ($request->filled('producto_id')) {
@@ -42,10 +45,11 @@ class MovimientoStockController extends Controller
     }
 
     // Registrar nuevo movimiento
-    public function store(Request $request)
+    public function store(Request $request, StockService $stock)
     {
         $request->validate([
             'producto_id'    => 'required|exists:productos,id',
+            'variante_id'    => 'nullable|integer|exists:variantes,id',
             'tipo'           => 'required|in:entrada,salida,ajuste',
             'cantidad'       => 'required|integer|min:1',
             'precio_unitario' => 'nullable|numeric|min:0',
@@ -54,44 +58,41 @@ class MovimientoStockController extends Controller
         ]);
 
         $producto = Producto::findOrFail($request->producto_id);
-        $stockAnterior = $producto->stock_actual;
 
-        // Calcular nuevo stock según tipo
-        $stockNuevo = match ($request->tipo) {
-            'entrada' => $stockAnterior + $request->cantidad,
-            'salida'  => $stockAnterior - $request->cantidad,
-            'ajuste'  => $request->cantidad, // ajuste directo al valor indicado
-        };
+        try {
+            $movimiento = DB::transaction(function () use ($request, $producto, $stock) {
+                $varianteId = $request->filled('variante_id') ? (int) $request->variante_id : null;
+                if ($varianteId && ! Variante::query()->whereKey($varianteId)->where('producto_id', $producto->id)->exists()) {
+                    throw new StockException('La presentación no corresponde a este producto.');
+                }
 
-        if ($stockNuevo < 0) {
-            return response()->json([
-                'message' => "Stock insuficiente. Stock actual: {$stockAnterior}, cantidad solicitada: {$request->cantidad}",
-            ], 422);
+                [$stockAnterior, $stockNuevo] = $stock->applyKardex($producto, $request->tipo, (int) $request->cantidad, $varianteId);
+
+                return MovimientoStock::create([
+                    'producto_id'    => $producto->id,
+                    'variante_id'    => $varianteId,
+                    'user_id'        => auth('api')->id() ?? auth()->id(),
+                    'tipo'           => $request->tipo,
+                    'cantidad'       => $request->tipo === 'ajuste'
+                                            ? abs($stockNuevo - $stockAnterior)
+                                            : $request->cantidad,
+                    'stock_anterior' => $stockAnterior,
+                    'stock_nuevo'    => $stockNuevo,
+                    'precio_unitario' => $request->precio_unitario,
+                    'motivo'         => $request->motivo,
+                    'referencia'     => $request->referencia,
+                ]);
+            });
+        } catch (StockException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $movimiento = DB::transaction(function () use ($request, $producto, $stockAnterior, $stockNuevo) {
-            $mov = MovimientoStock::create([
-                'producto_id'    => $producto->id,
-                'user_id'        => auth()->id(),
-                'tipo'           => $request->tipo,
-                'cantidad'       => $request->tipo === 'ajuste'
-                                        ? abs($stockNuevo - $stockAnterior)
-                                        : $request->cantidad,
-                'stock_anterior' => $stockAnterior,
-                'stock_nuevo'    => $stockNuevo,
-                'precio_unitario' => $request->precio_unitario,
-                'motivo'         => $request->motivo,
-                'referencia'     => $request->referencia,
-            ]);
-
-            $producto->update(['stock_actual' => $stockNuevo]);
-
-            return $mov;
-        });
+        $stockAnterior = $movimiento->stock_anterior;
+        $stockNuevo = $movimiento->stock_nuevo;
 
         return response()->json([
             'message'         => 'Movimiento registrado exitosamente',
-            'movimiento'      => $movimiento->load(['producto:id,nombre,codigo', 'user:id,name']),
+            'movimiento'      => $movimiento->load(['producto:id,nombre,codigo', 'variante:id,presentation,sku', 'user:id,name']),
             'stock_anterior'  => $stockAnterior,
             'stock_nuevo'     => $stockNuevo,
         ], 201);
@@ -100,7 +101,7 @@ class MovimientoStockController extends Controller
     // Ver un movimiento
     public function show($id)
     {
-        $movimiento = MovimientoStock::with(['producto:id,nombre,codigo', 'user:id,name'])->find($id);
+        $movimiento = MovimientoStock::with(['producto:id,nombre,codigo', 'variante:id,presentation,sku', 'user:id,name'])->find($id);
 
         if (!$movimiento) {
             return response()->json(['message' => 'Movimiento no encontrado'], 404);

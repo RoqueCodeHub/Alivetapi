@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Producto;
+use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -14,10 +15,11 @@ class ProductoController extends Controller
     public function index()
     {
         $lotes = $this->stockLotes();
+        $presentaciones = $this->presentaciones();
         $productos = Producto::with(['categoria', 'proveedor'])
             ->orderBy('nombre')
             ->get()
-            ->map(fn ($producto) => $this->format($producto, $lotes));
+            ->map(fn ($producto) => $this->format($producto, $lotes, $presentaciones));
 
         return response()->json([
             'message' => 'Productos obtenidos exitosamente',
@@ -45,10 +47,12 @@ class ProductoController extends Controller
         ]);
 
         $producto = Producto::create($request->all());
+        app(StockService::class)->materializeColumnStock($producto);
+        $producto->syncStockActual();
 
         return response()->json([
             'message' => 'Producto registrado exitosamente',
-            'producto' => $producto->load(['categoria', 'proveedor']),
+            'producto' => $this->format($producto->load(['categoria', 'proveedor']), $this->stockLotes(), $this->presentaciones()),
         ], 201);
     }
 
@@ -123,11 +127,11 @@ class ProductoController extends Controller
     public function stockBajo()
     {
         $productos = Producto::with(['categoria', 'proveedor'])
-            ->whereColumn('stock_actual', '<=', 'stock_minimo')
+            ->whereRaw('(SELECT COALESCE(SUM(b.quantity), 0) FROM variantes v INNER JOIN batches b ON b.variant_id = v.id WHERE v.producto_id = productos.id) <= stock_minimo')
             ->where('activo', true)
             ->orderBy('nombre')
             ->get()
-            ->map(fn ($producto) => $this->format($producto, $this->stockLotes()));
+            ->map(fn ($producto) => $this->format($producto, $this->stockLotes(), $this->presentaciones()));
 
         return response()->json([
             'message' => 'Productos con stock bajo',
@@ -145,7 +149,7 @@ class ProductoController extends Controller
             ->where('activo', true)
             ->orderBy('fecha_vencimiento')
             ->get()
-            ->map(fn ($producto) => $this->format($producto, $this->stockLotes()));
+            ->map(fn ($producto) => $this->format($producto, $this->stockLotes(), $this->presentaciones()));
 
         return response()->json([
             'message' => 'Productos próximos a vencer',
@@ -165,10 +169,30 @@ class ProductoController extends Controller
             ->all();
     }
 
-    private function format(Producto $producto, array $lotes = []): array
+    private function presentaciones(): array
+    {
+        return DB::table('variantes')
+            ->leftJoin('batches', 'batches.variant_id', '=', 'variantes.id')
+            ->groupBy('variantes.id', 'variantes.producto_id', 'variantes.presentation', 'variantes.sku', 'variantes.unit')
+            ->orderBy('variantes.id')
+            ->selectRaw('variantes.id as id, variantes.producto_id as producto_id, variantes.presentation as presentation, variantes.sku as sku, variantes.unit as unit, COALESCE(SUM(batches.quantity), 0) as stock')
+            ->get()
+            ->groupBy(fn ($row) => (int) $row->producto_id)
+            ->map(fn ($rows) => $rows->map(fn ($row) => [
+                'id' => (int) $row->id,
+                'presentacion' => $row->presentation ?: ($row->unit ?: '—'),
+                'sku' => $row->sku,
+                'stock' => (int) $row->stock,
+            ])->values()->all())
+            ->all();
+    }
+
+    private function format(Producto $producto, array $lotes = [], array $presentaciones = []): array
     {
         $enLotes = (int) ($lotes[$producto->id] ?? 0);
-        $stockDisponible = $enLotes > 0 ? $enLotes : (int) $producto->stock_actual;
+        $stockDisponible = array_key_exists($producto->id, $lotes)
+            ? $enLotes
+            : (int) $producto->stock_actual;
 
         return [
             'id' => $producto->id,
@@ -183,10 +207,11 @@ class ProductoController extends Controller
             ] : null,
             'precio_compra' => $producto->precio_compra,
             'precio_venta' => $producto->precio_venta,
-            'stock_actual' => $producto->stock_actual,
+            'stock_actual' => $stockDisponible,
             'stock_disponible' => $stockDisponible,
+            'presentaciones' => $presentaciones[$producto->id] ?? [],
             'stock_minimo' => $producto->stock_minimo,
-            'stock_bajo' => $producto->stockBajo(),
+            'stock_bajo' => $stockDisponible <= (int) $producto->stock_minimo,
             'unidad_medida' => $producto->unidad_medida,
             'fecha_vencimiento' => $producto->fecha_vencimiento?->format('Y-m-d'),
             'requiere_receta' => $producto->requiere_receta,

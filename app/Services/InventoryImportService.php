@@ -81,6 +81,8 @@ class InventoryImportService
             }
         }
 
+        $this->stock->rebuildProductoStock();
+
         return $summary;
     }
 

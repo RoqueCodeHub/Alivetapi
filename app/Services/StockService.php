@@ -68,16 +68,261 @@ class StockService
             ->orderBy('id')
             ->chunkById(100, function ($productos) use (&$updated) {
                 foreach ($productos as $producto) {
-                    $sum = (int) DB::table('batches')
-                        ->join('variantes', 'variantes.id', '=', 'batches.variant_id')
-                        ->where('variantes.producto_id', $producto->id)
-                        ->sum('batches.quantity');
-                    $producto->update(['stock_actual' => $sum]);
+                    $producto->syncStockActual();
                     $updated++;
                 }
             });
 
         return $updated;
+    }
+
+    /**
+     * Entrada, salida o ajuste del panel de inventario.
+     * El número que queda es la suma de los lotes, y productos.stock_actual se iguala a esa suma.
+     *
+     * @return array{0: int, 1: int} stock anterior y stock nuevo
+     */
+    public function applyKardex(Producto $producto, string $tipo, int $cantidad, ?int $varianteId = null): array
+    {
+        if (! in_array($tipo, ['entrada', 'salida', 'ajuste'], true)) {
+            throw new StockException('Tipo de movimiento no válido.');
+        }
+        if ($tipo === 'ajuste' && $cantidad < 0) {
+            throw new StockException('El stock no puede quedar negativo.');
+        }
+        if ($tipo !== 'ajuste' && $cantidad < 1) {
+            throw new StockException('La cantidad debe ser mayor a cero.');
+        }
+
+        return DB::transaction(function () use ($producto, $tipo, $cantidad, $varianteId) {
+            $locked = Producto::query()->whereKey($producto->id)->lockForUpdate()->firstOrFail();
+            if ($varianteId) {
+                $variant = Variante::query()
+                    ->where('producto_id', $locked->id)
+                    ->whereKey($varianteId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $variant) {
+                    throw new StockException('La presentación no corresponde a este producto.');
+                }
+
+                $anterior = $this->quantityOf($variant);
+                $nuevo = match ($tipo) {
+                    'entrada' => $anterior + $cantidad,
+                    'salida' => $anterior - $cantidad,
+                    'ajuste' => $cantidad,
+                };
+                if ($nuevo < 0) {
+                    throw new StockException("Stock insuficiente. Stock actual: {$anterior}, cantidad solicitada: {$cantidad}");
+                }
+
+                $this->setVariantQuantity($locked, $variant, $nuevo);
+                $locked->syncStockActual();
+
+                return [$anterior, $nuevo];
+            }
+
+            $this->materializeColumnStock($locked);
+            $anterior = $locked->hasBatches() ? $locked->onHandStock() : (int) $locked->getAttribute('stock_actual');
+            $nuevo = match ($tipo) {
+                'entrada' => $anterior + $cantidad,
+                'salida' => $anterior - $cantidad,
+                'ajuste' => $cantidad,
+            };
+            if ($nuevo < 0) {
+                throw new StockException("Stock insuficiente. Stock actual: {$anterior}, cantidad solicitada: {$cantidad}");
+            }
+
+            $this->setOnHand($locked, $nuevo);
+            $locked->syncStockActual();
+
+            return [$anterior, $nuevo];
+        });
+    }
+
+    public function issue(Producto $producto, int $cantidad): void
+    {
+        if ($cantidad < 1) {
+            return;
+        }
+
+        DB::transaction(function () use ($producto, $cantidad) {
+            $locked = Producto::query()->whereKey($producto->id)->lockForUpdate()->firstOrFail();
+            $this->materializeColumnStock($locked);
+            $this->takeFromBatches($locked, $cantidad);
+            $locked->syncStockActual();
+        });
+    }
+
+    public function restore(Producto $producto, int $cantidad): void
+    {
+        if ($cantidad < 1) {
+            return;
+        }
+
+        DB::transaction(function () use ($producto, $cantidad) {
+            $locked = Producto::query()->whereKey($producto->id)->lockForUpdate()->firstOrFail();
+            $this->materializeColumnStock($locked);
+            $this->addToBatch($locked, $cantidad, 'DEV');
+            $locked->syncStockActual();
+        });
+    }
+
+    /** Si el producto todavía no tiene lotes, abre uno con el stock guardado en la columna. */
+    public function materializeColumnStock(Producto $producto): void
+    {
+        if ($producto->hasBatches()) {
+            return;
+        }
+
+        $qty = max(0, (int) $producto->getAttribute('stock_actual'));
+        if ($qty < 1) {
+            return;
+        }
+
+        $this->addToBatch($producto, $qty, 'INI');
+    }
+
+    private function setOnHand(Producto $producto, int $target): void
+    {
+        $current = $producto->hasBatches() ? $producto->onHandStock() : 0;
+        $delta = $target - $current;
+        if ($delta > 0) {
+            $this->addToBatch($producto, $delta, 'AJU');
+
+            return;
+        }
+        if ($delta < 0) {
+            $this->takeFromBatches($producto, -$delta);
+        }
+    }
+
+    private function primaryVariant(Producto $producto): Variante
+    {
+        $variant = $producto->variantes()->orderBy('id')->first();
+        if ($variant) {
+            return $variant;
+        }
+
+        return $producto->variantes()->create([
+            'sku' => $producto->codigo,
+            'presentation' => $producto->presentacion ?: $producto->talla,
+            'unit' => $producto->unidad_medida ?: 'unidad',
+            'sale_unit' => $producto->unidad_medida ?: 'unidad',
+            'cost_price' => $producto->precio_compra,
+            'sale_price' => ((float) $producto->precio_venta) > 0 ? $producto->precio_venta : null,
+            'min_stock' => (int) $producto->stock_minimo,
+            'activo' => (bool) $producto->activo,
+        ]);
+    }
+
+    private function addToBatch(Producto $producto, int $qty, string $prefix): void
+    {
+        $variant = $this->primaryVariant($producto);
+        $batch = $variant->batches()->orderByDesc('id')->lockForUpdate()->first();
+        if (! $batch) {
+            Batch::query()->create([
+                'variant_id' => $variant->id,
+                'batch_code' => $prefix.'-'.($producto->codigo ?: $producto->id),
+                'expiry_date' => $producto->fecha_vencimiento,
+                'quantity' => $qty,
+                'cost' => $producto->precio_compra,
+            ]);
+
+            return;
+        }
+
+        $batch->increment('quantity', $qty);
+    }
+
+    private function takeFromBatches(Producto $producto, int $qty): void
+    {
+        $restante = $qty;
+        $lotes = Batch::query()
+            ->whereIn('variant_id', function ($query) use ($producto) {
+                $query->select('id')->from('variantes')->where('producto_id', $producto->id);
+            })
+            ->where('quantity', '>', 0)
+            ->orderByRaw('CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('expiry_date')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($lotes as $lote) {
+            if ($restante <= 0) {
+                break;
+            }
+            $tomar = min($restante, (int) $lote->quantity);
+            $lote->decrement('quantity', $tomar);
+            $restante -= $tomar;
+        }
+
+        if ($restante > 0) {
+            throw new StockException("Stock insuficiente para \"{$producto->nombre}\".");
+        }
+    }
+
+    private function quantityOf(Variante $variant): int
+    {
+        return (int) $variant->batches()->sum('quantity');
+    }
+
+    private function setVariantQuantity(Producto $producto, Variante $variant, int $target): void
+    {
+        $delta = $target - $this->quantityOf($variant);
+        if ($delta > 0) {
+            $this->addToVariantBatch($producto, $variant, $delta, 'AJU');
+
+            return;
+        }
+        if ($delta < 0) {
+            $this->takeFromVariant($producto, $variant, -$delta);
+        }
+    }
+
+    private function addToVariantBatch(Producto $producto, Variante $variant, int $qty, string $prefix): void
+    {
+        $batch = $variant->batches()->orderByDesc('id')->lockForUpdate()->first();
+        if (! $batch) {
+            Batch::query()->create([
+                'variant_id' => $variant->id,
+                'batch_code' => $prefix.'-'.($producto->codigo ?: $producto->id),
+                'expiry_date' => $producto->fecha_vencimiento,
+                'quantity' => $qty,
+                'cost' => $producto->precio_compra,
+            ]);
+
+            return;
+        }
+
+        $batch->increment('quantity', $qty);
+    }
+
+    private function takeFromVariant(Producto $producto, Variante $variant, int $qty): void
+    {
+        $restante = $qty;
+        $lotes = $variant->batches()
+            ->where('quantity', '>', 0)
+            ->orderByRaw('CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('expiry_date')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($lotes as $lote) {
+            if ($restante <= 0) {
+                break;
+            }
+            $tomar = min($restante, (int) $lote->quantity);
+            $lote->decrement('quantity', $tomar);
+            $restante -= $tomar;
+        }
+
+        if ($restante > 0) {
+            $nombre = trim($producto->nombre.' '.($variant->presentation ?: ''));
+            throw new StockException("Stock insuficiente para \"{$nombre}\".");
+        }
     }
 
     private function refreshProductoStock(int $variantId): void
@@ -87,12 +332,8 @@ class StockService
             return;
         }
 
-        $sum = (int) DB::table('batches')
-            ->join('variantes', 'variantes.id', '=', 'batches.variant_id')
-            ->where('variantes.producto_id', $productoId)
-            ->sum('batches.quantity');
-
-        Producto::query()->whereKey($productoId)->update(['stock_actual' => $sum]);
+        $producto = Producto::query()->find($productoId);
+        $producto?->syncStockActual();
     }
 
     public function adjust(Batch $batch, string $direction, int $quantity, string $reason, User $user, ?string $reference = null): StockMovement

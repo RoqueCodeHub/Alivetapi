@@ -37,8 +37,9 @@ class ProductService
             $data['precio_venta'] = $data['precio_venta'] ?? 0;
             $producto = Producto::create($data)->load(['categoria', 'marca', 'proveedor', 'variantes']);
             $this->syncPrimaryVariant($producto, $data);
+            $producto->syncStockActual();
 
-            return $producto->fresh(['categoria', 'marca', 'proveedor', 'variantes']);
+            return $producto->fresh(['categoria', 'marca', 'proveedor', 'variantes.batches']);
         });
     }
 
@@ -56,7 +57,9 @@ class ProductService
                 $this->applyCommercialDataToGroup($producto, $data);
             }
 
-            return $producto->fresh(['categoria', 'marca', 'proveedor', 'variantes']);
+            $producto->syncStockActual();
+
+            return $producto->fresh(['categoria', 'marca', 'proveedor', 'variantes.batches']);
         });
     }
 
@@ -136,7 +139,11 @@ class ProductService
             ->when($request->filled('proveedor_id'), fn ($builder) => $builder->where('proveedor_id', $request->proveedor_id))
             ->when($request->filled('marca_id'), fn ($builder) => $builder->where('marca_id', $request->marca_id))
             ->when($request->has('activo') && $request->activo !== '', fn ($builder) => $builder->where('activo', filter_var($request->activo, FILTER_VALIDATE_BOOLEAN)))
-            ->when($request->boolean('low_stock'), fn ($builder) => $builder->whereColumn('stock_actual', '<=', 'stock_minimo'))
+            ->when($request->boolean('low_stock'), function ($builder) {
+                $builder->whereRaw(
+                    '(SELECT COALESCE(SUM(b.quantity), 0) FROM variantes v INNER JOIN batches b ON b.variant_id = v.id WHERE v.producto_id = productos.id) <= stock_minimo'
+                );
+            })
             ->when($request->boolean('expired'), fn ($builder) => $builder->whereNotNull('fecha_vencimiento')->whereDate('fecha_vencimiento', '<', now()->toDateString()))
             ->when($request->boolean('expiring'), fn ($builder) => $builder->whereNotNull('fecha_vencimiento')->whereDate('fecha_vencimiento', '>=', now()->toDateString())->whereDate('fecha_vencimiento', '<=', now()->addDays(30)->toDateString()))
             ->when($request->boolean('without_price'), function ($builder) {

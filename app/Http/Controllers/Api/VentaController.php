@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Batch;
 use App\Models\Venta;
 use App\Models\Producto;
 use App\Models\MovimientoStock;
+use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -362,61 +362,16 @@ class VentaController extends Controller
 
     private function disponible(Producto $producto): int
     {
-        $lotes = (int) DB::table('batches')
-            ->join('variantes', 'variantes.id', '=', 'batches.variant_id')
-            ->where('variantes.producto_id', $producto->id)
-            ->sum('batches.quantity');
-
-        return $lotes > 0 ? $lotes : (int) $producto->stock_actual;
+        return $producto->stockDisponible();
     }
 
     private function descontarStock(Producto $producto, int $cantidad): void
     {
-        $restante = $cantidad;
-        $lotes = Batch::query()
-            ->whereIn('variant_id', function ($query) use ($producto) {
-                $query->select('id')->from('variantes')->where('producto_id', $producto->id);
-            })
-            ->where('quantity', '>', 0)
-            ->orderByRaw('CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('expiry_date')
-            ->lockForUpdate()
-            ->get();
-
-        foreach ($lotes as $lote) {
-            if ($restante <= 0) {
-                break;
-            }
-            $tomar = min($restante, (int) $lote->quantity);
-            $lote->decrement('quantity', $tomar);
-            $restante -= $tomar;
-        }
-
-        if ($restante > 0) {
-            $producto->refresh();
-            if ((int) $producto->stock_actual < $restante) {
-                throw new RuntimeException("Stock insuficiente para \"{$producto->nombre}\".");
-            }
-            $producto->decrement('stock_actual', $restante);
-        }
+        app(StockService::class)->issue($producto, $cantidad);
     }
 
     private function reponerStock(Producto $producto, int $cantidad): void
     {
-        $lote = Batch::query()
-            ->whereIn('variant_id', function ($query) use ($producto) {
-                $query->select('id')->from('variantes')->where('producto_id', $producto->id);
-            })
-            ->orderByRaw('CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('expiry_date')
-            ->lockForUpdate()
-            ->first();
-
-        if ($lote) {
-            $lote->increment('quantity', $cantidad);
-            return;
-        }
-
-        $producto->increment('stock_actual', $cantidad);
+        app(StockService::class)->restore($producto, $cantidad);
     }
 }

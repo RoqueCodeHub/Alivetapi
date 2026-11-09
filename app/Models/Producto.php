@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Producto extends Model
 {
@@ -76,15 +77,62 @@ class Producto extends Model
             || $this->variantes()->whereHas('stockMovements')->exists();
     }
 
-    public function onHandStock(): int
+    public function batchQuantity(): int
     {
-        if ($this->relationLoaded('variantes') && $this->variantes->contains(fn ($variante) => $variante->relationLoaded('batches'))) {
-            return (int) $this->variantes->sum(fn ($variante) => $variante->relationLoaded('batches')
-                ? $variante->batches->sum('quantity')
-                : 0);
+        if (
+            $this->relationLoaded('variantes')
+            && $this->variantes->isNotEmpty()
+            && $this->variantes->every(fn ($variante) => $variante->relationLoaded('batches'))
+        ) {
+            return (int) $this->variantes->sum(fn ($variante) => $variante->batches->sum('quantity'));
+        }
+
+        if ($this->exists) {
+            return (int) DB::table('batches')
+                ->join('variantes', 'variantes.id', '=', 'batches.variant_id')
+                ->where('variantes.producto_id', $this->id)
+                ->sum('batches.quantity');
         }
 
         return (int) $this->getAttribute('stock_actual');
+    }
+
+    public function onHandStock(): int
+    {
+        return $this->batchQuantity();
+    }
+
+    public function hasBatches(): bool
+    {
+        if (! $this->exists) {
+            return false;
+        }
+
+        return DB::table('batches')
+            ->join('variantes', 'variantes.id', '=', 'batches.variant_id')
+            ->where('variantes.producto_id', $this->id)
+            ->exists();
+    }
+
+    /** Suma de lotes cuando el producto ya tiene lotes. Si no tiene, la columna. */
+    public function stockDisponible(): int
+    {
+        if ($this->exists && $this->hasBatches()) {
+            return $this->batchQuantity();
+        }
+
+        return (int) $this->getAttribute('stock_actual');
+    }
+
+    public function syncStockActual(): int
+    {
+        $sum = $this->batchQuantity();
+        if ((int) $this->getAttribute('stock_actual') !== $sum) {
+            $this->update(['stock_actual' => $sum]);
+        }
+        $this->setAttribute('stock_actual', $sum);
+
+        return $sum;
     }
 
     public function loteCount(): int
