@@ -16,6 +16,7 @@ return [
         'ruc' => env('INVOICE_ISSUER_RUC') ?: '20611213175',
         'razon_social' => env('INVOICE_ISSUER_NAME') ?: 'Veterinaria Ali-Vet',
         'address' => env('INVOICE_ISSUER_ADDRESS') ?: 'Iberia',
+        'phone' => env('INVOICE_ISSUER_PHONE'),
         'ubigeo' => env('INVOICE_ISSUER_UBIGEO'),
         'urbanizacion' => env('INVOICE_ISSUER_URBANIZACION'),
         'distrito' => env('INVOICE_ISSUER_DISTRICT'),

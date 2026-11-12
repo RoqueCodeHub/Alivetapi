@@ -241,7 +241,7 @@ class VentaController extends Controller
 
     public function ticket($id, TicketPdf $tickets)
     {
-        $venta = Venta::with(['cliente.persona', 'detalles.producto'])->find($id);
+        $venta = Venta::with(['cliente.persona', 'detalles.producto.categoria'])->find($id);
         if (! $venta) {
             return response()->json(['message' => 'Venta no encontrada'], 404);
         }
