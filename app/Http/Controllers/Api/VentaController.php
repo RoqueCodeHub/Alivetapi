@@ -7,9 +7,11 @@ use App\Models\Venta;
 use App\Models\Producto;
 use App\Models\MovimientoStock;
 use App\Services\StockService;
+use App\Services\TicketPdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Throwable;
 
 class VentaController extends Controller
 {
@@ -140,6 +142,10 @@ class VentaController extends Controller
             });
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'No se pudo registrar la venta.'], 500);
         }
 
         return response()->json([
@@ -217,6 +223,10 @@ class VentaController extends Controller
             });
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'No se pudo registrar el cobro.'], 500);
         }
 
         return response()->json([
@@ -226,6 +236,22 @@ class VentaController extends Controller
                 'trabajador.persona:id,nombres,apellidos',
                 'detalles.producto:id,nombre,codigo',
             ])),
+        ]);
+    }
+
+    public function ticket($id, TicketPdf $tickets)
+    {
+        $venta = Venta::with(['cliente.persona', 'detalles.producto'])->find($id);
+        if (! $venta) {
+            return response()->json(['message' => 'Venta no encontrada'], 404);
+        }
+
+        $pdf = $tickets->bytes($venta);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$tickets->filename($venta).'"',
+            'Content-Length' => strlen($pdf),
         ]);
     }
 
@@ -324,7 +350,8 @@ class VentaController extends Controller
             'metodo_pago'  => $v->metodo_pago,
             'monto_pagado' => $v->monto_pagado,
             'observaciones' => $v->observaciones,
-            'fecha'        => $v->created_at?->format('Y-m-d H:i:s'),
+            'fecha'        => $v->created_at?->timezone('America/Lima')->format('Y-m-d H:i:s'),
+            'created_at'   => $v->created_at?->toIso8601String(),
         ];
     }
 

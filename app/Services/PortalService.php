@@ -53,11 +53,6 @@ class PortalService
         return $user;
     }
 
-    public function pets(Cliente $cliente)
-    {
-        return Pet::query()->where('cliente_id', $cliente->id)->orderBy('nombre')->get();
-    }
-
     public function petOf(Cliente $cliente, Pet $pet): Pet
     {
         if ((int) $pet->cliente_id !== (int) $cliente->id) {

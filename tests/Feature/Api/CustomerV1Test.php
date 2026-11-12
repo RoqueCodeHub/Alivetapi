@@ -85,6 +85,63 @@ class CustomerV1Test extends TestCase
         $this->assertSame('Max', $receipt['mascota']);
     }
 
+    public function test_pet_crud_list_is_paginated_and_blocks_clinical_delete(): void
+    {
+        $customer = $this->withToken($this->token)->postJson('/api/v1/customers', [
+            'name' => 'Ana Pets '.uniqid(),
+            'document_type' => 'DNI',
+            'document_number' => (string) random_int(10000000, 99999999),
+        ])->assertCreated()->json('data');
+
+        $created = $this->withToken($this->token)->postJson('/api/v1/pets', [
+            'cliente_id' => $customer['id'],
+            'nombre' => 'Luna',
+            'especie' => 'felino',
+            'raza' => 'siames',
+            'sexo' => 'hembra',
+            'peso' => 4.2,
+        ])->assertCreated()->json('data');
+
+        $listed = $this->withToken($this->token)
+            ->getJson('/api/v1/customers/'.$customer['id'].'/pets?per_page=10')
+            ->assertOk();
+        $this->assertSame('Luna', $listed->json('data.items.0.nombre'));
+        $this->assertSame(1, $listed->json('data.meta.current_page'));
+        $this->assertSame(10, $listed->json('data.meta.per_page'));
+        $this->assertSame(1, $listed->json('data.meta.total'));
+
+        $this->withToken($this->token)
+            ->getJson('/api/v1/pets?q=Luna&cliente_id='.$customer['id'])
+            ->assertOk()
+            ->assertJsonPath('data.items.0.id', $created['id']);
+
+        $this->withToken($this->token)->patchJson('/api/v1/pets/'.$created['id'], [
+            'nombre' => 'Luna actualizada',
+        ])->assertOk()->assertJsonPath('data.nombre', 'Luna actualizada');
+
+        $this->withToken($this->token)->postJson('/api/v1/pets/'.$created['id'].'/vaccinations', [
+            'vaccine_name' => 'Triple',
+            'applied_at' => now()->toDateString(),
+        ])->assertCreated();
+
+        $this->withToken($this->token)
+            ->deleteJson('/api/v1/pets/'.$created['id'])
+            ->assertStatus(409);
+
+        $other = $this->withToken($this->token)->postJson('/api/v1/customers/'.$customer['id'].'/pets', [
+            'nombre' => 'Nube',
+            'especie' => 'ave',
+        ])->assertCreated()->json('data');
+
+        $this->withToken($this->token)
+            ->deleteJson('/api/v1/pets/'.$other['id'])
+            ->assertOk();
+
+        $this->withToken($this->token)
+            ->getJson('/api/v1/pets/'.$other['id'])
+            ->assertNotFound();
+    }
+
     private function makeVariant(): Variante
     {
         $categoria = Categoria::query()->create(['nombre' => 'Cli '.uniqid(), 'activo' => true]);

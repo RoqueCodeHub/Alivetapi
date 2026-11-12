@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { environment } from '../../../environments/environment';
@@ -9,17 +9,27 @@ import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
 @Component({
   selector: 'app-portal-home',
   imports: [ReactiveFormsModule, RouterLink, Pager],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1>Hola {{ me()?.customer?.name }}</h1>
     <h2>Mascotas</h2>
     <ul>
-      @for (pet of me()?.customer?.pets ?? []; track pet.id) {
+      @for (pet of pets(); track pet.id) {
         <li>
           {{ pet.nombre }} — {{ pet.especie }}
           <a [routerLink]="['/portal/mascotas', pet.id, 'carnet']">Carnet</a>
         </li>
       }
     </ul>
+    <app-pager
+      [page]="petsMeta().current_page"
+      [lastPage]="petsMeta().last_page"
+      [total]="petsMeta().total"
+      [perPage]="petsMeta().per_page"
+      label="mascotas"
+      (pageChange)="goPets($event)"
+      (perPageChange)="setPetsPerPage($event)"
+    />
     <h2>Próximas citas</h2>
     <ul>
       @for (item of upcoming(); track item.id) {
@@ -30,7 +40,7 @@ import { emptyPage, PageMeta, Pager, readPageMeta } from '../../shared/pager';
     <form [formGroup]="form" (ngSubmit)="request()">
       <select formControlName="pet_id">
         <option value="">Mascota</option>
-        @for (pet of me()?.customer?.pets ?? []; track pet.id) {
+        @for (pet of pets(); track pet.id) {
           <option [value]="pet.id">{{ pet.nombre }}</option>
         }
       </select>
@@ -67,6 +77,8 @@ export class PortalHome {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(FormBuilder);
   readonly me = signal<any>(null);
+  readonly pets = signal<Array<{ id: number; nombre: string; especie: string | null }>>([]);
+  readonly petsMeta = signal<PageMeta>(emptyPage());
   readonly upcoming = signal<any[]>([]);
   readonly services = signal<any[]>([]);
   readonly purchases = signal<any[]>([]);
@@ -82,6 +94,7 @@ export class PortalHome {
     this.http.get<ApiResponse<any>>(`${environment.apiBaseUrl}/portal/me`).subscribe({
       next: (res) => this.me.set(res.data),
     });
+    this.loadPets();
     this.http.get<ApiResponse<any>>(`${environment.apiBaseUrl}/portal/appointments`).subscribe({
       next: (res) => this.upcoming.set(res.data?.upcoming ?? []),
     });
@@ -89,6 +102,19 @@ export class PortalHome {
       next: (res) => this.services.set(res.data ?? []),
     });
     this.loadPurchases();
+  }
+
+  goPets(page: number): void {
+    if (page < 1 || page > this.petsMeta().last_page) {
+      return;
+    }
+    this.petsMeta.update((meta) => ({ ...meta, current_page: page }));
+    this.loadPets();
+  }
+
+  setPetsPerPage(size: number): void {
+    this.petsMeta.update((meta) => ({ ...meta, per_page: size, current_page: 1 }));
+    this.loadPets();
   }
 
   goPurchases(page: number): void {
@@ -102,6 +128,25 @@ export class PortalHome {
   setPurchasePerPage(size: number): void {
     this.purchaseMeta.update((m) => ({ ...m, per_page: size, current_page: 1 }));
     this.loadPurchases();
+  }
+
+  private loadPets(): void {
+    this.http
+      .get<ApiResponse<{ items: Array<{ id: number; nombre: string; especie: string | null }>; meta: PageMeta }>>(
+        `${environment.apiBaseUrl}/portal/pets`,
+        {
+          params: {
+            page: String(this.petsMeta().current_page),
+            per_page: String(this.petsMeta().per_page),
+          },
+        },
+      )
+      .subscribe({
+        next: (res) => {
+          this.pets.set(res.data?.items ?? []);
+          this.petsMeta.set(readPageMeta(this.petsMeta(), res.data?.meta));
+        },
+      });
   }
 
   private loadPurchases(): void {

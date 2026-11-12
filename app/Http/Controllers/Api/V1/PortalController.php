@@ -14,6 +14,7 @@ use App\Http\Resources\VaccinationResource;
 use App\Models\Cliente;
 use App\Models\Pet;
 use App\Services\AuthService;
+use App\Services\PetService;
 use App\Services\PortalService;
 use App\Support\ApiResponse;
 use App\Support\PageSize;
@@ -25,6 +26,7 @@ class PortalController extends Controller
     public function __construct(
         private readonly PortalService $portal,
         private readonly AuthService $auth,
+        private readonly PetService $pets,
     ) {
     }
 
@@ -64,8 +66,12 @@ class PortalController extends Controller
     public function pets(Request $request): JsonResponse
     {
         $cliente = $this->requireCliente($request);
+        $page = $this->pets->paginate($cliente->id, $request);
 
-        return ApiResponse::success(PetResource::collection($this->portal->pets($cliente))->resolve(), 'Mascotas');
+        return ApiResponse::success([
+            'items' => PetResource::collection($page->getCollection())->resolve(),
+            'meta' => PageSize::meta($page),
+        ], 'Mascotas');
     }
 
     public function carnet(Request $request, Pet $pet): JsonResponse

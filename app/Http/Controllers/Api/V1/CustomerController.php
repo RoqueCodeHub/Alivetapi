@@ -62,6 +62,18 @@ class CustomerController extends Controller
         return ApiResponse::success(new CustomerResource($updated), 'Cliente actualizado');
     }
 
+    public function pets(Cliente $cliente): JsonResponse
+    {
+        $this->authorize('viewAny', Cliente::class);
+
+        $page = $this->pets->paginate($cliente->id);
+
+        return ApiResponse::success([
+            'items' => PetResource::collection($page->getCollection())->resolve(),
+            'meta' => PageSize::meta($page),
+        ], 'Mascotas');
+    }
+
     public function sales(Cliente $cliente): JsonResponse
     {
         $this->authorize('viewAny', Cliente::class);

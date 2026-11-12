@@ -44,6 +44,18 @@ class ProductoController extends Controller
             'unidad_medida' => 'required|string',
             'fecha_vencimiento' => 'nullable|date|after:today',
             'requiere_receta' => 'boolean',
+            'principio_activo' => 'nullable|string|max:150',
+            'concentracion' => 'nullable|string|max:80',
+            'tipo_receta' => 'nullable|in:OTC,RECETA_SIMPLE,CONTROLADO',
+            'especies_destino' => 'nullable|array',
+            'especies_destino.*' => 'string|max:40',
+            'cadena_frio' => 'boolean',
+            'tiempo_retiro_dias' => 'nullable|integer|min:0|max:3650',
+            'permite_fraccionamiento' => 'boolean',
+            'unidad_dispensacion' => 'nullable|string|max:50',
+            'factor_conversion' => 'nullable|numeric|min:0',
+            'precio_venta_dosis' => 'nullable|numeric|min:0',
+            'codigo_lote' => 'nullable|string|max:80',
         ]);
 
         $producto = Producto::create($request->all());
@@ -80,7 +92,7 @@ class ProductoController extends Controller
             return response()->json(['message' => 'Producto no encontrado'], 404);
         }
 
-        foreach (['codigo', 'descripcion', 'unidad_medida', 'fecha_vencimiento', 'categoria_id', 'proveedor_id'] as $campo) {
+        foreach (['codigo', 'descripcion', 'unidad_medida', 'fecha_vencimiento', 'categoria_id', 'proveedor_id', 'principio_activo', 'concentracion', 'unidad_dispensacion', 'codigo_lote'] as $campo) {
             if ($request->exists($campo) && $request->input($campo) === '') {
                 $request->merge([$campo => null]);
             }
@@ -99,6 +111,18 @@ class ProductoController extends Controller
             'fecha_vencimiento' => 'nullable|date',
             'requiere_receta' => 'sometimes|boolean',
             'activo' => 'sometimes|boolean',
+            'principio_activo' => 'nullable|string|max:150',
+            'concentracion' => 'nullable|string|max:80',
+            'tipo_receta' => 'nullable|in:OTC,RECETA_SIMPLE,CONTROLADO',
+            'especies_destino' => 'nullable|array',
+            'especies_destino.*' => 'string|max:40',
+            'cadena_frio' => 'sometimes|boolean',
+            'tiempo_retiro_dias' => 'nullable|integer|min:0|max:3650',
+            'permite_fraccionamiento' => 'sometimes|boolean',
+            'unidad_dispensacion' => 'nullable|string|max:50',
+            'factor_conversion' => 'nullable|numeric|min:0',
+            'precio_venta_dosis' => 'nullable|numeric|min:0',
+            'codigo_lote' => 'nullable|string|max:80',
         ]);
 
         $producto->update($datos);
@@ -216,6 +240,17 @@ class ProductoController extends Controller
             'fecha_vencimiento' => $producto->fecha_vencimiento?->format('Y-m-d'),
             'requiere_receta' => $producto->requiere_receta,
             'activo' => $producto->activo,
+            'principio_activo' => $producto->principio_activo,
+            'concentracion' => $producto->concentracion,
+            'tipo_receta' => $producto->tipo_receta,
+            'especies_destino' => $producto->especies_destino ?? [],
+            'cadena_frio' => (bool) $producto->cadena_frio,
+            'tiempo_retiro_dias' => $producto->tiempo_retiro_dias,
+            'permite_fraccionamiento' => (bool) $producto->permite_fraccionamiento,
+            'unidad_dispensacion' => $producto->unidad_dispensacion,
+            'factor_conversion' => $producto->factor_conversion,
+            'precio_venta_dosis' => $producto->precio_venta_dosis,
+            'codigo_lote' => $producto->codigo_lote,
         ];
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Cliente;
 use App\Models\Persona;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ClienteController extends Controller
 {
@@ -26,16 +27,10 @@ class ClienteController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'nombres'          => 'required|string|max:255',
-            'apellidos'        => 'required|string|max:255',
-            'tipo_documento'   => 'required|in:DNI,CE,PASAPORTE',
-            'numero_documento' => 'nullable|string|unique:personas,numero_documento',
-            'telefono'         => 'nullable|string|max:50',
-            'email'            => 'nullable|email|unique:personas,email',
-            'direccion'        => 'nullable|string',
-            'observaciones'    => 'nullable|string',
-        ]);
+        $request->validate(
+            $this->reglas($request),
+            $this->mensajes()
+        );
 
         $cliente = DB::transaction(function () use ($request) {
             $persona = Persona::create($request->only([
@@ -78,17 +73,10 @@ class ClienteController extends Controller
             return response()->json(['message' => 'Cliente no encontrado'], 404);
         }
 
-        $request->validate([
-            'nombres'          => 'sometimes|string|max:255',
-            'apellidos'        => 'sometimes|string|max:255',
-            'tipo_documento'   => 'sometimes|in:DNI,CE,PASAPORTE',
-            'numero_documento' => 'nullable|string|unique:personas,numero_documento,' . $cliente->persona_id,
-            'telefono'         => 'nullable|string|max:50',
-            'email'            => 'nullable|email|unique:personas,email,' . $cliente->persona_id,
-            'direccion'        => 'nullable|string',
-            'activo'           => 'boolean',
-            'observaciones'    => 'nullable|string',
-        ]);
+        $request->validate(
+            $this->reglas($request, $cliente),
+            $this->mensajes()
+        );
 
         DB::transaction(function () use ($request, $cliente) {
             $cliente->persona->update($request->only([
@@ -126,6 +114,87 @@ class ClienteController extends Controller
         });
 
         return response()->json(['message' => 'Cliente eliminado exitosamente']);
+    }
+
+    private function reglas(Request $request, ?Cliente $cliente = null): array
+    {
+        foreach (['numero_documento', 'telefono', 'email', 'direccion', 'observaciones'] as $campo) {
+            if ($request->exists($campo) && trim((string) $request->input($campo)) === '') {
+                $request->merge([$campo => null]);
+            }
+        }
+
+        $tipo = strtoupper(trim((string) $request->input('tipo_documento', $cliente?->persona?->tipo_documento ?? 'DNI')));
+        if ($tipo === 'PASSPORT') {
+            $tipo = 'PASAPORTE';
+        }
+        if ($request->exists('tipo_documento')) {
+            $request->merge(['tipo_documento' => $tipo]);
+        }
+
+        $personaId = $cliente?->persona_id;
+        $documento = ['nullable', 'string', 'max:12', $this->formatoDocumento($tipo)];
+        $documento[] = $personaId
+            ? Rule::unique('personas', 'numero_documento')->ignore($personaId)
+            : Rule::unique('personas', 'numero_documento');
+        $email = ['nullable', 'email', 'max:255'];
+        $email[] = $personaId
+            ? Rule::unique('personas', 'email')->ignore($personaId)
+            : Rule::unique('personas', 'email');
+
+        $reglas = [
+            'nombres' => ['string', 'max:255'],
+            'apellidos' => $cliente ? ['sometimes', 'string', 'max:255'] : ['required', 'string', 'max:255'],
+            'tipo_documento' => ['in:DNI,RUC,CE,PASAPORTE'],
+            'numero_documento' => $documento,
+            'telefono' => ['nullable', 'regex:/^9\d{8}$/'],
+            'email' => $email,
+            'direccion' => ['nullable', 'string', 'max:255'],
+            'observaciones' => ['nullable', 'string', 'max:1000'],
+        ];
+
+        if ($cliente) {
+            $reglas['nombres'][] = 'sometimes';
+            $reglas['tipo_documento'][] = 'sometimes';
+            $reglas['activo'] = ['boolean'];
+        } else {
+            $reglas['nombres'][] = 'required';
+            $reglas['tipo_documento'][] = 'required';
+        }
+
+        return $reglas;
+    }
+
+    private function formatoDocumento(string $tipo): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($tipo): void {
+            if ($value === null || $value === '') {
+                return;
+            }
+            $numero = (string) $value;
+            $valido = match ($tipo) {
+                'DNI' => preg_match('/^\d{8}$/', $numero) === 1,
+                'RUC' => preg_match('/^\d{11}$/', $numero) === 1,
+                'CE' => preg_match('/^[A-Za-z0-9]{9,12}$/', $numero) === 1,
+                default => preg_match('/^[A-Za-z0-9]{6,12}$/', $numero) === 1,
+            };
+            if (! $valido) {
+                $fail('El número de documento no corresponde al tipo seleccionado.');
+            }
+        };
+    }
+
+    private function mensajes(): array
+    {
+        return [
+            'nombres.required' => 'Los nombres del cliente son obligatorios.',
+            'apellidos.required' => 'Los apellidos del cliente son obligatorios.',
+            'email.email' => 'Ingresa un correo válido.',
+            'email.unique' => 'Ese correo ya está registrado.',
+            'telefono.regex' => 'El teléfono debe tener 9 dígitos y empezar con 9.',
+            'numero_documento.unique' => 'Ese documento ya está registrado.',
+            'tipo_documento.in' => 'El tipo de documento no es válido.',
+        ];
     }
 
     private function format(Cliente $c): array

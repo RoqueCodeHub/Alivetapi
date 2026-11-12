@@ -20,8 +20,9 @@ class Venta extends Model
     ];
 
     protected $casts = [
-        'total'    => 'decimal:2',
+        'total' => 'decimal:2',
         'descuento' => 'decimal:2',
+        'monto_pagado' => 'decimal:2',
     ];
 
     public function cliente()

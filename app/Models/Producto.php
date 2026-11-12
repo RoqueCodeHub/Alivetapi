@@ -31,6 +31,17 @@ class Producto extends Model
         'requiere_receta',
         'requires_batch',
         'activo',
+        'principio_activo',
+        'concentracion',
+        'tipo_receta',
+        'especies_destino',
+        'cadena_frio',
+        'tiempo_retiro_dias',
+        'permite_fraccionamiento',
+        'unidad_dispensacion',
+        'factor_conversion',
+        'precio_venta_dosis',
+        'codigo_lote',
     ];
 
     protected $casts = [
@@ -42,6 +53,12 @@ class Producto extends Model
         'requiere_receta' => 'boolean',
         'requires_batch' => 'boolean',
         'activo' => 'boolean',
+        'especies_destino' => 'array',
+        'cadena_frio' => 'boolean',
+        'permite_fraccionamiento' => 'boolean',
+        'tiempo_retiro_dias' => 'integer',
+        'factor_conversion' => 'decimal:2',
+        'precio_venta_dosis' => 'decimal:2',
     ];
 
     public function categoria(): BelongsTo

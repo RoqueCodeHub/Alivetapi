@@ -21,6 +21,8 @@ use App\Observers\AuditObserver;
 use App\Services\Invoicing\FakePseGateway;
 use App\Services\Invoicing\HttpPseGateway;
 use App\Services\Invoicing\PseGateway;
+use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Contracts\Auth\CanResetPassword;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -42,6 +44,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        ResetPassword::createUrlUsing(function (object $notifiable, string $token): string {
+            $frontend = rtrim((string) config('app.frontend_url'), '/');
+            $email = $notifiable instanceof CanResetPassword
+                ? rawurlencode($notifiable->getEmailForPasswordReset())
+                : '';
+
+            return $frontend.'/recuperar-contrasena?token='.$token.'&email='.$email;
+        });
+
         if (class_exists(\Spatie\Permission\Middleware\RoleMiddleware::class)) {
             $router = $this->app->make('router');
             $router->aliasMiddleware('role', \Spatie\Permission\Middleware\RoleMiddleware::class);

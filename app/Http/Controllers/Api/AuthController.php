@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Throwable;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -42,11 +44,23 @@ class AuthController extends Controller
         $request->validate([
             'email'    => 'required|email',
             'password' => 'required',
+            'remember' => 'sometimes|boolean',
         ]);
 
         $credentials = $request->only('email', 'password');
+        $guard = auth('api');
+        $defaultTtl = (int) config('jwt.ttl');
+        if ($request->boolean('remember')) {
+            $guard->setTTL(60 * 24 * 14);
+        }
 
-        if (!$token = auth('api')->attempt($credentials)) {
+        try {
+            $token = $guard->attempt($credentials);
+        } finally {
+            $guard->setTTL($defaultTtl);
+        }
+
+        if (!$token) {
             return response()->json([
                 'message' => 'Credenciales incorrectas'
             ], 401);
@@ -85,6 +99,55 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Sesión cerrada exitosamente'
+        ]);
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        try {
+            Password::sendResetLink($request->only('email'));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo enviar el correo. Intenta más tarde.',
+            ], 503);
+        }
+
+        return response()->json([
+            'message' => 'Si el correo está registrado, enviaremos instrucciones para restablecer la contraseña.',
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'token' => 'required|string',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $status = Password::reset(
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function (User $user, string $password): void {
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                ])->save();
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            return response()->json([
+                'message' => 'El enlace no es válido o ya expiró.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Contraseña actualizada. Ya puedes iniciar sesión.',
         ]);
     }
 

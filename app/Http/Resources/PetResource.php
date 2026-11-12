@@ -22,6 +22,10 @@ class PetResource extends JsonResource
             'alergias' => $this->alergias,
             'foto' => $this->foto,
             'foto_url' => $this->foto ? Storage::disk('public')->url($this->foto) : null,
+            'cliente' => $this->whenLoaded('cliente', fn () => [
+                'id' => $this->cliente->id,
+                'name' => $this->cliente->displayName(),
+            ]),
         ];
     }
 }

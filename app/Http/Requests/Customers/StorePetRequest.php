@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Customers;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StorePetRequest extends FormRequest
 {
@@ -14,6 +15,12 @@ class StorePetRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'cliente_id' => [
+                Rule::requiredIf(fn () => $this->route('cliente') === null),
+                'nullable',
+                'integer',
+                'exists:clientes,id',
+            ],
             'nombre' => ['required', 'string', 'max:255'],
             'especie' => ['nullable', 'string', 'max:100'],
             'raza' => ['nullable', 'string', 'max:100'],

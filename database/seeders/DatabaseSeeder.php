@@ -14,7 +14,9 @@ class DatabaseSeeder extends Seeder
             PermissionSeeder::class,
             CatalogSeeder::class,
             ProveedorSeeder::class,
+            ProductoSeeder::class,
             ClienteSeeder::class,
+            PetSeeder::class,
             MetodoPagoSeeder::class,
             ProductInventorySeeder::class,
         ]);

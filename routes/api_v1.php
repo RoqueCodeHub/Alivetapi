@@ -136,9 +136,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('customers/{cliente}', [CustomerController::class, 'update']);
     Route::post('customers/{cliente}/portal', [PortalController::class, 'enable']);
     Route::get('customers/{cliente}/purchases', [CustomerController::class, 'sales']);
+    Route::get('customers/{cliente}/pets', [CustomerController::class, 'pets']);
     Route::post('customers/{cliente}/pets', [CustomerController::class, 'storePet']);
+    Route::get('pets', [PetController::class, 'index']);
+    Route::post('pets', [PetController::class, 'store']);
     Route::get('pets/{pet}', [PetController::class, 'show']);
     Route::put('pets/{pet}', [PetController::class, 'update']);
+    Route::patch('pets/{pet}', [PetController::class, 'update']);
+    Route::delete('pets/{pet}', [PetController::class, 'destroy']);
     Route::post('pets/{pet}/photo', [PetController::class, 'photo']);
 
     Route::get('reports/dashboard', [ReportController::class, 'dashboard']);

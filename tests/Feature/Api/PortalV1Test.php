@@ -80,10 +80,13 @@ class PortalV1Test extends TestCase
         $this->assertSame($mine['id'], $login['user']['cliente_id']);
         $this->assertContains('Cliente', $login['user']['roles']);
         $token = $login['token'];
+        $this->app['auth']->forgetGuards();
 
-        $pets = $this->withToken($token)->getJson('/api/v1/portal/pets')->assertOk()->json('data');
+        $petsResponse = $this->withToken($token)->getJson('/api/v1/portal/pets')->assertOk();
+        $pets = $petsResponse->json('data.items');
         $this->assertCount(1, $pets);
         $this->assertSame('Michi', $pets[0]['nombre']);
+        $this->assertSame(1, $petsResponse->json('data.meta.total'));
 
         $carnet = $this->withToken($token)
             ->getJson('/api/v1/portal/pets/'.$myPet['id'].'/carnet')

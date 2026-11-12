@@ -14,6 +14,8 @@ use App\Http\Controllers\Api\ClienteController;
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('reset-password', [AuthController::class, 'resetPassword']);
 });
 
 // Rutas protegidas con JWT
@@ -74,6 +76,7 @@ Route::middleware('auth:api')->group(function () {
     Route::prefix('ventas')->group(function () {
         Route::get('/', [VentaController::class, 'index']);
         Route::post('/', [VentaController::class, 'store']);
+        Route::get('/{id}/ticket', [VentaController::class, 'ticket']);
         Route::get('/{id}', [VentaController::class, 'show']);
         Route::patch('/{id}/cobrar', [VentaController::class, 'cobrar']);
         Route::patch('/{id}/anular', [VentaController::class, 'anular']);
