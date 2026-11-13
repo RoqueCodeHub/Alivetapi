@@ -147,6 +147,11 @@ class TicketPdf
         $blocks[] = $this->amount('IGV '.$this->igvPercent().'%', $this->money($igv), 8, 'F1');
         $blocks[] = $this->rule();
         $blocks[] = $this->amount('TOTAL', $this->money($total), 10, 'F2');
+        $pagado = $venta->monto_pagado === null ? $total : (float) $venta->monto_pagado;
+        $saldo = round(max($total - $pagado, 0), 2);
+        if ($saldo > 0.009) {
+            $blocks[] = $this->amount('SALDO', $this->money($saldo), 9, 'F2');
+        }
         $blocks[] = $this->gap(2);
         $this->addWrapped($blocks, $this->enLetras($total), 7, 'F1', 'left');
         $blocks[] = $this->rule();

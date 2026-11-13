@@ -19,7 +19,7 @@ import { AuthService } from '../../core/services/auth.service';
           <li>{{ item.description }} x{{ item.quantity }} = S/ {{ item.line_total }}</li>
         }
       </ul>
-      <p>Total S/ {{ ticket.total }} — vuelto S/ {{ ticket.change_amount }}</p>
+      <p>Total S/ {{ ticket.total }} — pagado S/ {{ ticket.paid ?? ticket.total }} — saldo S/ {{ ticket.balance ?? 0 }} — vuelto S/ {{ ticket.change_amount }}</p>
       @if (ticket.invoice; as inv) {
         <p>CPE {{ inv.document }} ({{ inv.document_type }}) — IGV S/ {{ inv.igv }} — {{ inv.status }}</p>
       }
@@ -28,7 +28,7 @@ import { AuthService } from '../../core/services/auth.service';
       <button type="button" (click)="emit('boleta')">Emitir boleta</button>
       <button type="button" (click)="emit('factura')">Emitir factura</button>
     }
-    @if (auth.hasPermission('sales.void') && receipt()?.status === 'completed') {
+    @if (auth.hasPermission('sales.void') && receipt()?.status !== 'voided' && !(receipt()?.status === 'pending' && (receipt()?.paid ?? 0) > 0)) {
       <form [formGroup]="voidForm" (ngSubmit)="voidSale()">
         <input placeholder="Motivo de anulación" formControlName="reason" />
         <button type="submit">Anular</button>

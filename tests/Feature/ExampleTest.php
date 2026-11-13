@@ -17,10 +17,8 @@ class ExampleTest extends TestCase
         $response->assertStatus(200);
     }
 
-    public function test_legacy_api_login_route_still_exists(): void
+    public function test_legacy_api_is_not_mounted(): void
     {
-        $this->postJson('/api/auth/login', [])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
+        $this->postJson('/api/auth/login', [])->assertNotFound();
     }
 }

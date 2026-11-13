@@ -31,6 +31,11 @@ class SalePolicy
         return $user->can('sales.charge');
     }
 
+    public function credit(User $user): bool
+    {
+        return $user->can('sales.credit');
+    }
+
     public function void(User $user): bool
     {
         return $user->can('sales.void');

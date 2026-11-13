@@ -24,6 +24,8 @@ class SaleResource extends JsonResource
             'subtotal' => $this->subtotal,
             'discount' => $this->discount,
             'total' => $this->total,
+            'paid' => $this->amountPaid(),
+            'balance' => $this->balanceDue(),
             'change_amount' => $this->change_amount,
             'status' => $this->status,
             'payment_status' => $this->payment_status,
@@ -38,22 +40,33 @@ class SaleResource extends JsonResource
                     'total' => $inv->total,
                 ])->values()->all();
             }),
-            'idempotency_key' => $this->idempotency_key,
+            'idempotency_key' => $this->when(
+                $request->user()?->can('sales.create') && (int) $request->user()->id === (int) $this->user_id,
+                fn () => $this->idempotency_key
+            ),
             'created_at' => $this->created_at?->toDateTimeString(),
-            'items' => $this->whenLoaded('items', function () {
-                return $this->items->map(fn ($item) => [
-                    'id' => $item->id,
-                    'item_type' => $item->item_type,
-                    'variant_id' => $item->variant_id,
-                    'batch_id' => $item->batch_id,
-                    'batch_code' => $item->batch?->batch_code,
-                    'description' => $item->description,
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'unit_cost' => $item->unit_cost,
-                    'discount' => $item->discount,
-                    'line_total' => $item->line_total,
-                ])->values()->all();
+            'items' => $this->whenLoaded('items', function () use ($request) {
+                $showCost = $request->user()?->can('costs.view') ?? false;
+
+                return $this->items->map(function ($item) use ($showCost) {
+                    $line = [
+                        'id' => $item->id,
+                        'item_type' => $item->item_type,
+                        'variant_id' => $item->variant_id,
+                        'batch_id' => $item->batch_id,
+                        'batch_code' => $item->batch?->batch_code,
+                        'description' => $item->description,
+                        'quantity' => $item->quantity,
+                        'unit_price' => $item->unit_price,
+                        'discount' => $item->discount,
+                        'line_total' => $item->line_total,
+                    ];
+                    if ($showCost) {
+                        $line['unit_cost'] = $item->unit_cost;
+                    }
+
+                    return $line;
+                })->values()->all();
             }),
             'payments' => $this->whenLoaded('payments', function () {
                 return $this->payments->map(fn ($p) => [

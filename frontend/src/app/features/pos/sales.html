@@ -2,9 +2,10 @@
 <p>
   Selecciona una presentación con stock. El lote se asigna por FEFO (primero en vencer).
   @if (auth.hasPermission('sales.charge')) {
-    El cobro está en <a routerLink="/app/pos">Caja</a>.
-  } @else {
-    Al guardar, la venta queda pendiente y la ve cualquier cajera para cobrar.
+    Cobrar de contado exige la caja abierta. Los saldos se abonan en <a routerLink="/app/pos">Caja</a>.
+  }
+  @if (auth.hasPermission('sales.credit')) {
+    Fiar descuenta el stock al momento y exige un cliente.
   }
 </p>
 
@@ -61,7 +62,27 @@
     </ul>
     <p class="total">Total S/ {{ total() }}</p>
     <input placeholder="Notas" [value]="notes()" (input)="notes.set($any($event.target).value)" />
-    <button type="button" class="save" (click)="save()" [disabled]="!cart().length">Guardar venta por pagar</button>
+    @if (auth.hasPermission('sales.charge')) {
+      <label>Efectivo <input type="number" step="0.01" [formControl]="payForm.controls.efectivo" /></label>
+      <label>Yape <input type="number" step="0.01" [formControl]="payForm.controls.yape" /></label>
+      <label>Plin <input type="number" step="0.01" [formControl]="payForm.controls.plin" /></label>
+      <label>Tarjeta <input type="number" step="0.01" [formControl]="payForm.controls.tarjeta" /></label>
+      <label>Transferencia <input type="number" step="0.01" [formControl]="payForm.controls.transferencia" /></label>
+      <button type="button" class="save" (click)="charge()" [disabled]="!cart().length">Cobrar ahora</button>
+    }
+    @if (auth.hasPermission('sales.credit')) {
+      <input placeholder="Buscar cliente para fiar" (input)="searchCustomers($any($event.target).value)" />
+      <ul>
+        @for (customer of customers(); track customer.id) {
+          <li>
+            <button type="button" (click)="chooseCustomer(customer)">
+              {{ customer.name }} @if (customerId() === customer.id) { (seleccionado) }
+            </button>
+          </li>
+        }
+      </ul>
+      <button type="button" (click)="credit()" [disabled]="!cart().length || !customerId()">Fiar</button>
+    }
     @if (message()) {
       <p>{{ message() }}</p>
     }

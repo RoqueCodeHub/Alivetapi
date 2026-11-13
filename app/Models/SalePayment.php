@@ -9,6 +9,7 @@ class SalePayment extends Model
 {
     protected $fillable = [
         'sale_id',
+        'cash_session_id',
         'method',
         'amount',
     ];

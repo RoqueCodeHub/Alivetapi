@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Sales;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreSaleRequest extends FormRequest
 {
@@ -15,7 +16,7 @@ class StoreSaleRequest extends FormRequest
     {
         return [
             'idempotency_key' => ['required', 'string', 'max:80'],
-            'customer_id' => ['nullable', 'exists:clientes,id'],
+            'customer_id' => ['nullable', 'exists:clientes,id', Rule::requiredIf(fn () => $this->boolean('pending'))],
             'pet_id' => ['nullable', 'exists:pets,id'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string'],

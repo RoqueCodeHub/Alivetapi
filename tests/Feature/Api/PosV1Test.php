@@ -6,6 +6,7 @@ use App\Models\Batch;
 use App\Models\Categoria;
 use App\Models\Producto;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\User;
 use App\Models\Variante;
 use Database\Seeders\PermissionSeeder;
@@ -98,23 +99,38 @@ class PosV1Test extends TestCase
 
         $operator = User::factory()->create(['is_active' => true]);
         $operator->syncRoles(['Operador de tienda']);
+        $customer = $this->customer();
 
         $this->flushHeaders();
         $this->actingAs($operator, 'sanctum')
             ->postJson('/api/v1/cash-sessions/open', ['opening_amount' => 10])
-            ->assertCreated();
-        $opSale = $this->actingAs($operator, 'sanctum')->postJson('/api/v1/sales', [
+            ->assertForbidden();
+        $this->actingAs($operator, 'sanctum')->postJson('/api/v1/sales', [
             'idempotency_key' => 'op-'.$this->id(),
+            'pending' => true,
+            'customer_id' => $customer,
             'items' => [['variant_id' => $variant->id, 'quantity' => 1]],
-            'payments' => [['method' => 'efectivo', 'amount' => 10]],
-        ])->assertCreated()->json('data');
+        ])->assertForbidden();
+
+        $own = Sale::create([
+            'user_id' => $operator->id,
+            'series' => 'B001',
+            'number' => ((int) Sale::query()->where('series', 'B001')->max('number')) + 1,
+            'subtotal' => 10,
+            'discount' => 0,
+            'total' => 10,
+            'change_amount' => 0,
+            'payment_status' => Sale::PAYMENT_PAID,
+            'status' => Sale::STATUS_COMPLETED,
+            'idempotency_key' => 'own-'.$this->id(),
+        ]);
 
         $list = collect($this->actingAs($operator, 'sanctum')->getJson('/api/v1/sales')->json('data.items'));
-        $this->assertTrue($list->contains(fn ($row) => $row['id'] === $opSale['id']));
+        $this->assertTrue($list->contains(fn ($row) => $row['id'] === $own->id));
         $this->assertFalse($list->contains(fn ($row) => $row['id'] === $adminSale['id']));
 
         $this->actingAs($operator, 'sanctum')
-            ->postJson('/api/v1/sales/'.$opSale['id'].'/void', ['reason' => 'no'])
+            ->postJson('/api/v1/sales/'.$own->id.'/void', ['reason' => 'no'])
             ->assertForbidden();
     }
 
@@ -190,6 +206,34 @@ class PosV1Test extends TestCase
         $this->assertTrue($items->contains(fn ($row) => $row['variant_id'] === $b->id && (int) $row['on_hand'] === 2));
     }
 
+    public function test_idempotency_key_does_not_reveal_another_cashiers_sale(): void
+    {
+        $variant = $this->makeVariant(10);
+        $this->stockBatch($variant, 4, now()->addMonth()->toDateString());
+        $this->withToken($this->token)->postJson('/api/v1/cash-sessions/open', ['opening_amount' => 0])->assertCreated();
+
+        $key = 'shared-'.$this->id();
+        $sale = $this->withToken($this->token)->postJson('/api/v1/sales', [
+            'idempotency_key' => $key,
+            'items' => [['variant_id' => $variant->id, 'quantity' => 1]],
+            'payments' => [['method' => 'efectivo', 'amount' => 10]],
+        ])->assertCreated()->json('data');
+
+        $cashier = User::factory()->create(['is_active' => true]);
+        $cashier->syncRoles(['Cajero']);
+        $cashierToken = $cashier->createToken('api')->plainTextToken;
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+
+        $this->withToken($cashierToken)->postJson('/api/v1/sales', [
+            'idempotency_key' => $key,
+            'items' => [['variant_id' => $variant->id, 'quantity' => 1]],
+            'payments' => [['method' => 'efectivo', 'amount' => 10]],
+        ])->assertStatus(422)->assertJsonMissingPath('data.id');
+
+        $this->assertSame($sale['id'], Sale::query()->where('idempotency_key', $key)->value('id'));
+    }
+
     public function test_insufficient_stock_is_rejected(): void
     {
         $variant = $this->makeVariant(10);
@@ -203,30 +247,152 @@ class PosV1Test extends TestCase
         ])->assertStatus(422);
     }
 
-    public function test_pending_sale_waits_for_payment_before_stock_out(): void
+    public function test_credit_sale_moves_stock_and_accepts_partial_payments(): void
     {
         $variant = $this->makeVariant(12);
-        $batch = $this->stockBatch($variant, 3, now()->addMonth()->toDateString());
+        $batch = $this->stockBatch($variant, 5, now()->addMonth()->toDateString());
+        $customer = $this->customer();
 
-        $draft = $this->withToken($this->token)->postJson('/api/v1/sales', [
-            'idempotency_key' => 'pend-'.$this->id(),
+        $cashier = User::factory()->create(['is_active' => true]);
+        $cashier->syncRoles(['Cajero']);
+        $cashierToken = $cashier->createToken('api')->plainTextToken;
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $this->withToken($cashierToken)->postJson('/api/v1/sales', [
+            'idempotency_key' => 'cajero-fiado-'.$this->id(),
             'pending' => true,
+            'customer_id' => $customer,
+            'items' => [['variant_id' => $variant->id, 'quantity' => 1, 'unit_price' => 12]],
+        ])->assertForbidden();
+
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $draft = $this->withToken($this->token)->postJson('/api/v1/sales', [
+            'idempotency_key' => 'fiado-'.$this->id(),
+            'pending' => true,
+            'customer_id' => $customer,
             'items' => [['variant_id' => $variant->id, 'quantity' => 2, 'unit_price' => 12]],
         ])->assertCreated()->json('data');
 
         $this->assertSame('pending', $draft['status']);
         $this->assertSame('pendiente', $draft['payment_status']);
+        $this->assertEquals(24, (float) $draft['balance']);
         $this->assertSame(3, $batch->fresh()->quantity);
 
-        $this->withToken($this->token)->postJson('/api/v1/cash-sessions/open', ['opening_amount' => 50]);
+        $this->withToken($this->token)->postJson('/api/v1/sales/'.$draft['id'].'/returns', [
+            'reason' => 'aún no está pagada',
+            'items' => [['sale_item_id' => $draft['items'][0]['id'], 'quantity' => 1]],
+        ])->assertStatus(422);
 
-        $paid = $this->withToken($this->token)->postJson('/api/v1/sales/'.$draft['id'].'/pay', [
-            'payments' => [['method' => 'efectivo', 'amount' => 24]],
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $this->withToken($cashierToken)->postJson('/api/v1/cash-sessions/open', [
+            'opening_amount' => 20,
+        ])->assertCreated();
+
+        $partial = $this->withToken($cashierToken)->postJson('/api/v1/sales/'.$draft['id'].'/pay', [
+            'payments' => [['method' => 'efectivo', 'amount' => 10]],
         ])->assertOk()->json('data');
+        $this->assertSame('pending', $partial['status']);
+        $this->assertEquals(14, (float) $partial['balance']);
+        $this->assertSame(3, $batch->fresh()->quantity);
 
+        $session = $this->withToken($cashierToken)->getJson('/api/v1/cash-sessions/current')->json('data');
+        $this->assertEquals(30, (float) $session['expected_amount']);
+
+        $this->withToken($cashierToken)->postJson('/api/v1/sales/'.$draft['id'].'/void', [
+            'reason' => 'ya hay abono',
+        ])->assertForbidden();
+
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $this->withToken($this->token)->postJson('/api/v1/sales/'.$draft['id'].'/void', [
+            'reason' => 'ya hay abono',
+        ])->assertStatus(422);
+
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $paid = $this->withToken($cashierToken)->postJson('/api/v1/sales/'.$draft['id'].'/pay', [
+            'payments' => [['method' => 'yape', 'amount' => 14]],
+        ])->assertOk()->json('data');
         $this->assertSame('completed', $paid['status']);
-        $this->assertSame('pagado', $paid['payment_status']);
-        $this->assertSame(1, $batch->fresh()->quantity);
+        $this->assertEquals(0, (float) $paid['balance']);
+        $this->assertSame(3, $batch->fresh()->quantity);
+
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $receipt = $this->withToken($this->token)->getJson('/api/v1/sales/'.$draft['id'].'/receipt')->json('data');
+        $this->assertEquals(0, (float) $receipt['balance']);
+        $this->assertEquals(24, (float) $receipt['paid']);
+    }
+
+    public function test_unpaid_credit_can_be_voided_and_legacy_debt_stocks_on_payment(): void
+    {
+        $variant = $this->makeVariant(8);
+        $batch = $this->stockBatch($variant, 4, now()->addMonth()->toDateString());
+        $customer = $this->customer();
+
+        $credit = $this->withToken($this->token)->postJson('/api/v1/sales', [
+            'idempotency_key' => 'anula-'.$this->id(),
+            'pending' => true,
+            'customer_id' => $customer,
+            'items' => [['variant_id' => $variant->id, 'quantity' => 1, 'unit_price' => 8]],
+        ])->assertCreated()->json('data');
+        $this->assertSame(3, $batch->fresh()->quantity);
+
+        $this->withToken($this->token)->postJson('/api/v1/sales/'.$credit['id'].'/void', [
+            'reason' => 'el cliente desistió',
+        ])->assertOk();
+        $this->assertSame(4, $batch->fresh()->quantity);
+
+        $legacy = Sale::create([
+            'user_id' => $this->admin->id,
+            'customer_id' => $customer,
+            'series' => 'B001',
+            'number' => ((int) Sale::query()->where('series', 'B001')->max('number')) + 1,
+            'subtotal' => 8,
+            'discount' => 0,
+            'total' => 8,
+            'change_amount' => 0,
+            'payment_status' => Sale::PAYMENT_PENDING,
+            'status' => Sale::STATUS_PENDING,
+            'idempotency_key' => 'legacy-'.$this->id(),
+        ]);
+        $legacy->items()->create([
+            'item_type' => SaleItem::TYPE_PRODUCT,
+            'variant_id' => $variant->id,
+            'description' => 'Deuda anterior',
+            'quantity' => 1,
+            'unit_price' => 8,
+            'unit_cost' => 4,
+            'discount' => 0,
+            'line_total' => 8,
+        ]);
+
+        $this->withToken($this->token)->postJson('/api/v1/cash-sessions/open', ['opening_amount' => 0]);
+        $this->withToken($this->token)->postJson('/api/v1/sales/'.$legacy->id.'/pay', [
+            'payments' => [['method' => 'efectivo', 'amount' => 8]],
+        ])->assertOk();
+        $this->assertSame(3, $batch->fresh()->quantity);
+    }
+
+    public function test_legacy_register_is_not_available(): void
+    {
+        $this->postJson('/api/auth/register', [
+            'name' => 'Intruso',
+            'email' => 'intruso-'.$this->id().'@example.com',
+            'password' => 'secret123',
+            'role_id' => 1,
+        ])->assertNotFound();
+    }
+
+    private function customer(): int
+    {
+        return (int) $this->withToken($this->token)->postJson('/api/v1/customers', [
+            'name' => 'Cliente fiado '.$this->id(),
+            'document_type' => 'DNI',
+            'document_number' => (string) random_int(10000000, 99999999),
+        ])->assertCreated()->json('data.id');
     }
 
     private function makeVariant(float $price): Variante

@@ -164,7 +164,7 @@ class ClinicService
 
     public function attachFile(MedicalRecord $record, UploadedFile $file, string $kind = 'adjunto'): MedicalAttachment
     {
-        $path = $file->store('clinic', 'public');
+        $path = $file->store('clinic', 'local');
 
         return MedicalAttachment::create([
             'medical_record_id' => $record->id,

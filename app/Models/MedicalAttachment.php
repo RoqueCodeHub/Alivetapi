@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 class MedicalAttachment extends Model
 {
@@ -22,6 +21,10 @@ class MedicalAttachment extends Model
 
     public function url(): ?string
     {
-        return $this->path ? Storage::disk('public')->url($this->path) : null;
+        if (! $this->path || ! $this->id || ! $this->medical_record_id) {
+            return null;
+        }
+
+        return url('/api/v1/medical-records/'.$this->medical_record_id.'/attachments/'.$this->id);
     }
 }

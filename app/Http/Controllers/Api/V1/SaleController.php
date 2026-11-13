@@ -49,11 +49,13 @@ class SaleController extends Controller
     {
         $this->authorize('create', Sale::class);
 
-        if (! $request->boolean('pending') && ! $request->user()?->can('sales.charge')) {
-            abort(403, 'Solo la cajera o el administrador pueden cobrar. El operador solo registra la venta.');
+        if ($request->boolean('pending')) {
+            $this->authorize('credit', Sale::class);
+        } elseif (! $request->user()?->can('sales.charge')) {
+            abort(403, 'Solo quien cobra en caja puede registrar una venta pagada.');
         }
 
-        $existing = $this->sales->findByIdempotency($request->validated('idempotency_key'));
+        $existing = $this->sales->replayFor($request->user(), $request->validated('idempotency_key'));
         if ($existing) {
             return ApiResponse::success(new SaleResource($existing), 'Venta ya registrada (idempotencia)');
         }
@@ -69,10 +71,13 @@ class SaleController extends Controller
         $this->authorize('charge', Sale::class);
 
         $paid = $this->sales->pay($sale, $request->validated(), $request->user());
+        $message = $paid->isPending()
+            ? 'Abono registrado. Queda saldo pendiente.'
+            : 'Pago aprobado. Entregar producto y voucher.';
 
         return ApiResponse::success(
             new SaleResource($paid->load(['items.batch', 'payments', 'user', 'customer', 'pet', 'invoices'])),
-            'Pago aprobado. Entregar producto y voucher.'
+            $message
         );
     }
 

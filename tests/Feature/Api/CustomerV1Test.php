@@ -8,7 +8,9 @@ use App\Models\Producto;
 use App\Models\User;
 use App\Models\Variante;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class CustomerV1Test extends TestCase
@@ -159,6 +161,44 @@ class CustomerV1Test extends TestCase
             'cost_price' => 3,
             'activo' => true,
         ]);
+    }
+
+    public function test_pet_photo_stays_off_the_public_disk(): void
+    {
+        Storage::fake('local');
+        Storage::fake('public');
+
+        $customer = $this->withToken($this->token)->postJson('/api/v1/customers', [
+            'name' => 'Foto '.$this->suffix(),
+            'document_type' => 'DNI',
+            'document_number' => (string) random_int(10000000, 99999999),
+        ])->assertCreated()->json('data');
+
+        $pet = $this->withToken($this->token)->postJson('/api/v1/customers/'.$customer['id'].'/pets', [
+            'nombre' => 'Luna',
+            'especie' => 'felino',
+        ])->assertCreated()->json('data');
+
+        $stored = $this->withToken($this->token)->post('/api/v1/pets/'.$pet['id'].'/photo', [
+            'foto' => UploadedFile::fake()->image('luna.jpg'),
+        ])->assertOk()->json('data');
+
+        $this->assertNull($stored['foto']);
+        $this->assertStringContainsString('/api/v1/pets/'.$pet['id'].'/photo', (string) $stored['foto_url']);
+        $this->assertSame([], Storage::disk('public')->allFiles());
+
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $this->get('/api/v1/pets/'.$pet['id'].'/photo')->assertUnauthorized();
+
+        $this->withToken($this->token)
+            ->get('/api/v1/pets/'.$pet['id'].'/photo')
+            ->assertOk();
+    }
+
+    private function suffix(): string
+    {
+        return str_replace('.', '', uniqid('', true));
     }
 
     private function stock(Variante $variant, int $qty): void

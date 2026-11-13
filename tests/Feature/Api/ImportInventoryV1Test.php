@@ -105,4 +105,14 @@ class ImportInventoryV1Test extends TestCase
             ->post('/api/v1/import/inventory', ['file' => $file])
             ->assertForbidden();
     }
+
+    public function test_import_rejects_a_file_that_is_not_a_spreadsheet(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('inventario.pdf', '%PDF-1.4');
+
+        $this->withToken($this->token)
+            ->post('/api/v1/import/inventory', ['file' => $file])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Los datos enviados no son válidos');
+    }
 }

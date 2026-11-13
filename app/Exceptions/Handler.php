@@ -36,7 +36,7 @@ class Handler extends ExceptionHandler
         return ApiResponse::error(
             'Los datos enviados no son válidos',
             $exception->status,
-            $exception->errors()
+            $request->user() ? $exception->errors() : null
         );
     }
 

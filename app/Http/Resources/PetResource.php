@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class PetResource extends JsonResource
 {
@@ -20,8 +19,8 @@ class PetResource extends JsonResource
             'fecha_nacimiento' => optional($this->fecha_nacimiento)?->toDateString(),
             'peso' => $this->peso,
             'alergias' => $this->alergias,
-            'foto' => $this->foto,
-            'foto_url' => $this->foto ? Storage::disk('public')->url($this->foto) : null,
+            'foto' => null,
+            'foto_url' => $this->foto ? url('/api/v1/pets/'.$this->id.'/photo') : null,
             'cliente' => $this->whenLoaded('cliente', fn () => [
                 'id' => $this->cliente->id,
                 'name' => $this->cliente->displayName(),

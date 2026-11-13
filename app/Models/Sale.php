@@ -99,6 +99,19 @@ class Sale extends Model
         return $this->series.'-'.str_pad((string) $this->number, 6, '0', STR_PAD_LEFT);
     }
 
+    public function amountPaid(): float
+    {
+        $this->loadMissing('payments');
+        $tendered = (float) $this->payments->sum('amount');
+
+        return round(min((float) $this->total, max($tendered - (float) $this->change_amount, 0)), 2);
+    }
+
+    public function balanceDue(): float
+    {
+        return round(max((float) $this->total - $this->amountPaid(), 0), 2);
+    }
+
     public function cashNet(): float
     {
         $cash = (float) $this->payments->where('method', 'efectivo')->sum('amount');

@@ -126,30 +126,38 @@ class SaleService
         return Sale::query()->where('idempotency_key', $key)->with(['items.batch', 'payments', 'user'])->first();
     }
 
+    public function replayFor(User $user, string $key): ?Sale
+    {
+        $existing = $this->findByIdempotency($key);
+        if (! $existing) {
+            return null;
+        }
+
+        return $this->ownedReplay($existing, $user);
+    }
+
     public function create(array $data, User $user): Sale
     {
         $existing = $this->findByIdempotency($data['idempotency_key']);
         if ($existing) {
-            return $existing;
+            return $this->ownedReplay($existing, $user);
         }
 
         $pending = (bool) ($data['pending'] ?? false);
-
+        $session = null;
         if (! $pending) {
             $session = $this->cash->current($user);
             if (! $session) {
                 throw new SaleException('Debes abrir caja antes de cobrar.');
             }
-        } else {
-            $session = $this->cash->current($user);
         }
 
         $sale = DB::transaction(function () use ($data, $user, $session, $pending) {
             if ($dup = Sale::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first()) {
-                return $dup->load(['items.batch', 'payments', 'user', 'customer', 'pet']);
+                return $this->ownedReplay($dup->load(['items.batch', 'payments', 'user', 'customer', 'pet']), $user);
             }
 
-            [$lines, $subtotal] = $this->buildLines($data['items'], ! $pending);
+            [$lines, $subtotal] = $this->buildLines($data['items'], true);
             $discount = round((float) ($data['discount'] ?? 0), 2);
             if ($discount < 0 || $discount > $subtotal) {
                 throw new SaleException('El descuento de la venta no es válido.');
@@ -175,6 +183,9 @@ class SaleService
             } elseif ($customerId) {
                 Cliente::query()->findOrFail($customerId);
             }
+            if ($pending && ! $customerId) {
+                throw new SaleException('La venta a crédito exige un cliente.');
+            }
 
             $sale = Sale::create([
                 'cash_session_id' => $session?->id,
@@ -197,7 +208,7 @@ class SaleService
                 $skipStock = ! empty($line['skip_stock']);
                 unset($line['skip_stock']);
                 $sale->items()->create($line);
-                if (! $pending && $line['item_type'] === SaleItem::TYPE_PRODUCT && ! $skipStock && ! empty($line['batch_id'])) {
+                if ($line['item_type'] === SaleItem::TYPE_PRODUCT && ! $skipStock && ! empty($line['batch_id'])) {
                     $this->stock->move(
                         \App\Models\Batch::query()->findOrFail($line['batch_id']),
                         StockMovement::TYPE_VENTA,
@@ -211,7 +222,11 @@ class SaleService
             }
 
             foreach ($payments as $payment) {
-                $sale->payments()->create($payment);
+                $sale->payments()->create([
+                    'method' => $payment['method'],
+                    'amount' => $payment['amount'],
+                    'cash_session_id' => $session?->id,
+                ]);
             }
 
             return $sale->fresh(['items.batch', 'items.variante.producto', 'payments', 'user', 'customer', 'pet']);
@@ -242,11 +257,19 @@ class SaleService
         }
 
         $sale = DB::transaction(function () use ($sale, $data, $user, $session) {
-            $sale->load('items.variante.producto');
-            [$payments, $change] = $this->normalizePayments($data['payments'] ?? [], (float) $sale->total);
+            $locked = Sale::query()->whereKey($sale->id)->lockForUpdate()->firstOrFail();
+            if ($locked->isVoided()) {
+                throw new SaleException('No se puede cobrar una venta anulada.');
+            }
+            if (! $locked->isPending()) {
+                throw new SaleException('Esta venta ya fue cobrada.');
+            }
 
-            foreach ($sale->items as $item) {
-                if ($item->item_type !== SaleItem::TYPE_PRODUCT || ! $item->variant_id) {
+            $locked->load('items.variante.producto', 'payments');
+            $payments = $this->normalizeAbono($data['payments'] ?? [], $locked->balanceDue(), $session->id);
+
+            foreach ($locked->items as $item) {
+                if ($item->item_type !== SaleItem::TYPE_PRODUCT || ! $item->variant_id || $item->batch_id) {
                     continue;
                 }
                 $variante = $item->variante;
@@ -255,10 +278,9 @@ class SaleService
                 if (! $first) {
                     throw new SaleException('Sin stock para '.$item->description);
                 }
-                $batch = $first['batch'];
                 $item->update([
-                    'batch_id' => $batch->id,
-                    'unit_cost' => (float) ($batch->cost ?? $variante->cost_price ?? 0),
+                    'batch_id' => $first['batch']->id,
+                    'unit_cost' => (float) ($first['batch']->cost ?? $variante->cost_price ?? 0),
                 ]);
                 foreach ($allocations as $allocation) {
                     $this->stock->move(
@@ -266,29 +288,29 @@ class SaleService
                         StockMovement::TYPE_VENTA,
                         $allocation['quantity'],
                         $user,
-                        'Venta '.$sale->document(),
-                        'sale:'.$sale->id,
+                        'Venta '.$locked->document(),
+                        'sale:'.$locked->id,
                         StockMovement::DIRECTION_OUT
                     );
                 }
             }
 
             foreach ($payments as $payment) {
-                $sale->payments()->create($payment);
+                $locked->payments()->create($payment);
             }
 
-            $sale->update([
-                'cash_session_id' => $session->id,
-                'change_amount' => $change,
-                'payment_status' => 'pagado',
-                'status' => Sale::STATUS_COMPLETED,
+            $locked->unsetRelation('payments');
+            $settled = $locked->balanceDue() <= 0.009;
+            $locked->update([
+                'payment_status' => $settled ? Sale::PAYMENT_PAID : Sale::PAYMENT_PENDING,
+                'status' => $settled ? Sale::STATUS_COMPLETED : Sale::STATUS_PENDING,
             ]);
 
-            return $sale->fresh(['items.batch', 'items.variante.producto', 'payments', 'user', 'customer', 'pet', 'invoices']);
+            return $locked->fresh(['items.batch', 'items.variante.producto', 'payments', 'user', 'customer', 'pet', 'invoices']);
         });
 
         $this->summaries->rebuildDate($sale->created_at);
-        if (! empty($data['invoice_type'])) {
+        if (! $sale->isPending() && ! empty($data['invoice_type'])) {
             $this->billing->emitForSale($sale, (string) $data['invoice_type'], $user);
             $sale->load('invoices');
         }
@@ -307,6 +329,9 @@ class SaleService
         }
         if ($sale->returns()->exists()) {
             throw new SaleException('No se puede anular una venta con devoluciones.');
+        }
+        if ($sale->isPending() && $sale->payments()->exists()) {
+            throw new SaleException('No se puede anular una deuda que ya tiene abonos.');
         }
 
         $sale = DB::transaction(function () use ($sale, $reason, $user) {
@@ -346,15 +371,29 @@ class SaleService
         if ($sale->isVoided()) {
             throw new SaleException('No se puede devolver una venta anulada.');
         }
+        if ($sale->payment_status !== Sale::PAYMENT_PAID) {
+            throw new SaleException('Solo se pueden devolver productos de una venta ya pagada.');
+        }
 
-        $return = DB::transaction(function () use ($sale, $data, $user) {
+        $refundMethod = $data['refund_method'] ?? 'efectivo';
+        $cashSessionId = null;
+        if ($refundMethod === 'efectivo') {
+            $open = $this->cash->current($user);
+            if (! $open) {
+                throw new SaleException('Debes abrir caja antes de devolver en efectivo.');
+            }
+            $cashSessionId = $open->id;
+        }
+
+        $return = DB::transaction(function () use ($sale, $data, $user, $refundMethod, $cashSessionId) {
             $refund = 0.0;
             $return = SaleReturn::create([
                 'sale_id' => $sale->id,
                 'user_id' => $user->id,
+                'cash_session_id' => $cashSessionId,
                 'reason' => $data['reason'],
                 'refund_total' => 0,
-                'refund_method' => $data['refund_method'] ?? 'efectivo',
+                'refund_method' => $refundMethod,
             ]);
 
             foreach ($data['items'] as $row) {
@@ -424,6 +463,9 @@ class SaleService
             'subtotal' => $sale->subtotal,
             'discount' => $sale->discount,
             'total' => $sale->total,
+            'paid' => $sale->amountPaid(),
+            'balance' => $sale->balanceDue(),
+            'payment_status' => $sale->payment_status,
             'payments' => $sale->payments->map(fn (SalePayment $p) => [
                 'method' => $p->method,
                 'amount' => $p->amount,
@@ -610,6 +652,38 @@ class SaleService
         return [$normalized, round($cash - $neededCash, 2)];
     }
 
+    /**
+     * @param  list<array{method: string, amount: float|int|string}>  $payments
+     * @return list<array{method: string, amount: float, cash_session_id: int}>
+     */
+    private function normalizeAbono(array $payments, float $balance, int $cashSessionId): array
+    {
+        if ($payments === [] || $balance <= 0.009) {
+            throw new SaleException('No hay saldo pendiente para cobrar.');
+        }
+
+        $normalized = [];
+        $sum = 0.0;
+        foreach ($payments as $payment) {
+            $amount = round((float) $payment['amount'], 2);
+            if ($amount <= 0) {
+                throw new SaleException('El monto de pago debe ser mayor a cero.');
+            }
+            $normalized[] = [
+                'method' => $payment['method'],
+                'amount' => $amount,
+                'cash_session_id' => $cashSessionId,
+            ];
+            $sum += $amount;
+        }
+        $sum = round($sum, 2);
+        if ($sum - $balance > 0.009) {
+            throw new SaleException('El abono supera el saldo pendiente.');
+        }
+
+        return $normalized;
+    }
+
     private function invoiceSummary(Sale $sale): ?array
     {
         $inv = $sale->invoices
@@ -629,6 +703,15 @@ class SaleService
             'igv' => $inv->igv,
             'total' => $inv->total,
         ];
+    }
+
+    private function ownedReplay(Sale $sale, User $user): Sale
+    {
+        if ((int) $sale->user_id !== (int) $user->id) {
+            throw new SaleException('No se puede repetir esa operación.');
+        }
+
+        return $sale;
     }
 
     private function seesAll(User $user): bool

@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Exceptions\SaleException;
 use App\Models\CashSession;
 use App\Models\Sale;
+use App\Models\SalePayment;
+use App\Models\SaleReturn;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -58,20 +60,22 @@ class CashSessionService
 
     public function expectedAmount(CashSession $session): float
     {
-        $session->loadMissing(['sales.payments', 'sales.returns']);
-        $net = 0.0;
-        foreach ($session->sales as $sale) {
-            if ($sale->isVoided() || $sale->isPending()) {
-                continue;
-            }
-            $net += $sale->cashNet();
-            foreach ($sale->returns as $return) {
-                if ($return->refund_method === 'efectivo') {
-                    $net -= (float) $return->refund_total;
-                }
-            }
-        }
+        $cashIn = (float) SalePayment::query()
+            ->where('cash_session_id', $session->id)
+            ->where('method', 'efectivo')
+            ->whereHas('sale', fn ($query) => $query->where('status', '!=', Sale::STATUS_VOIDED))
+            ->sum('amount');
 
-        return round((float) $session->opening_amount + $net, 2);
+        $change = (float) Sale::query()
+            ->where('cash_session_id', $session->id)
+            ->where('status', '!=', Sale::STATUS_VOIDED)
+            ->sum('change_amount');
+
+        $refunds = (float) SaleReturn::query()
+            ->where('cash_session_id', $session->id)
+            ->where('refund_method', 'efectivo')
+            ->sum('refund_total');
+
+        return round((float) $session->opening_amount + $cashIn - $change - $refunds, 2);
     }
 }

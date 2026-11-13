@@ -82,8 +82,9 @@ class AuditController extends Controller
                 'sql' => 'Eloquent / bindings',
                 'xss' => 'Angular interpola; API JSON',
                 'csrf' => 'API Bearer Sanctum; web VerifyCsrfToken',
-                'rate_limit' => 'api 60/min; login 5/min',
-                'archivos' => '.env gitignored; backups fuera de public/',
+                'rate_limit' => 'api 60/min; login y cambio de clave 5/min',
+                'archivos' => 'adjuntos y fotos fuera de public/; backups fuera de public/',
+                'headers' => 'CSP, nosniff, frame deny; HSTS si hay HTTPS o producción',
             ],
         ], 'Estado de seguridad');
     }

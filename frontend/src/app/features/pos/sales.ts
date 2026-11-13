@@ -29,9 +29,18 @@ export class Sales {
   readonly auth = inject(AuthService);
   readonly hits = signal<CatalogHit[]>([]);
   readonly categories = signal<{ id: number; nombre: string }[]>([]);
+  readonly customers = signal<{ id: number; name: string }[]>([]);
+  readonly customerId = signal<number | null>(null);
   readonly cart = signal<any[]>([]);
   readonly notes = signal('');
   readonly message = signal('');
+  readonly payForm = this.fb.nonNullable.group({
+    efectivo: [0],
+    yape: [0],
+    plin: [0],
+    tarjeta: [0],
+    transferencia: [0],
+  });
   readonly meta = signal<PageMeta>(emptyPage());
   readonly filters = this.fb.nonNullable.group({
     q: [''],
@@ -128,26 +137,84 @@ export class Sales {
     return this.cart().reduce((sum, line) => sum + line.quantity * Number(line.unit_price), 0);
   }
 
-  save(): void {
+  searchCustomers(raw: string): void {
+    const q = raw.trim();
+    this.customerId.set(null);
+    if (!this.auth.hasPermission('sales.credit') || q.length < 2) {
+      this.customers.set([]);
+      return;
+    }
+    this.http
+      .get<ApiResponse<{ items: { id: number; name: string }[] }>>(`${environment.apiBaseUrl}/customers`, {
+        params: { q, per_page: '8' },
+      })
+      .subscribe({
+        next: (res) => this.customers.set(res.data?.items ?? []),
+      });
+  }
+
+  chooseCustomer(customer: { id: number; name: string }): void {
+    this.customerId.set(customer.id);
+    this.customers.set([customer]);
+  }
+
+  charge(): void {
+    this.save(false);
+  }
+
+  credit(): void {
+    this.save(true);
+  }
+
+  private save(pending: boolean): void {
     if (!this.cart().length) {
       return;
     }
+    if (pending && !this.customerId()) {
+      this.message.set('Elige un cliente para fiar.');
+      return;
+    }
+    const payments = this.payments();
+    if (!pending && !payments.length) {
+      this.message.set('Indica el monto cobrado.');
+      return;
+    }
     const key = globalThis.crypto?.randomUUID?.() ?? `venta-${Date.now()}`;
-    this.http
-      .post<ApiResponse<any>>(`${environment.apiBaseUrl}/sales`, {
-        idempotency_key: key,
-        pending: true,
-        notes: this.notes() || null,
-        items: this.cart(),
-      })
-      .subscribe({
-        next: (res) => {
-          this.message.set(`${res.message} Ticket ${res.data?.document}`);
-          this.cart.set([]);
-          this.notes.set('');
-        },
-        error: (err) => this.message.set(err.message || 'No se pudo guardar'),
-      });
+    const body: Record<string, unknown> = {
+      idempotency_key: key,
+      pending,
+      notes: this.notes() || null,
+      items: this.cart(),
+    };
+    if (pending) {
+      body['customer_id'] = this.customerId();
+    } else {
+      body['payments'] = payments;
+    }
+    this.http.post<ApiResponse<any>>(`${environment.apiBaseUrl}/sales`, body).subscribe({
+      next: (res) => {
+        const balance = Number(res.data?.balance ?? 0);
+        const saldo = balance > 0 ? ` Saldo S/ ${balance}.` : '';
+        this.message.set(`${res.message} Ticket ${res.data?.document}.${saldo}`);
+        this.cart.set([]);
+        this.notes.set('');
+        this.customerId.set(null);
+        this.customers.set([]);
+        this.payForm.reset();
+      },
+      error: (err) => this.message.set(err?.error?.message || err.message || 'No se pudo guardar'),
+    });
+  }
+
+  private payments(): { method: string; amount: number }[] {
+    const pay = this.payForm.getRawValue();
+    const rows: { method: string; amount: number }[] = [];
+    (['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia'] as const).forEach((method) => {
+      if (pay[method] > 0) {
+        rows.push({ method, amount: pay[method] });
+      }
+    });
+    return rows;
   }
 
   private flatten(items: any[]): { id: number; nombre: string }[] {

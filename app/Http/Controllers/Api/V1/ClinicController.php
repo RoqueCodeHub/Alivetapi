@@ -11,6 +11,7 @@ use App\Http\Resources\VaccinationResource;
 use App\Http\Resources\VetServiceResource;
 use App\Models\Appointment;
 use App\Models\Deworming;
+use App\Models\MedicalAttachment;
 use App\Models\MedicalRecord;
 use App\Models\Pet;
 use App\Models\Vaccination;
@@ -20,6 +21,8 @@ use App\Support\ApiResponse;
 use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ClinicController extends Controller
 {
@@ -220,7 +223,7 @@ class ClinicController extends Controller
     {
         $this->authorize('attend', MedicalRecord::class);
         $request->validate([
-            'file' => ['required', 'file', 'max:4096'],
+            'file' => ['required', 'file', 'max:4096', 'mimes:jpg,jpeg,png,webp,pdf'],
             'kind' => ['nullable', 'in:foto,adjunto'],
         ]);
         $att = $this->clinic->attachFile($medicalRecord, $request->file('file'), $request->input('kind', 'adjunto'));
@@ -230,6 +233,29 @@ class ClinicController extends Controller
             'kind' => $att->kind,
             'url' => $att->url(),
         ], 'Adjunto guardado', 201);
+    }
+
+    public function downloadAttachment(MedicalRecord $medicalRecord, MedicalAttachment $attachment): StreamedResponse
+    {
+        $this->authorize('viewAny', MedicalRecord::class);
+        if ((int) $attachment->medical_record_id !== (int) $medicalRecord->id) {
+            abort(404);
+        }
+
+        $disk = null;
+        if ($attachment->path && Storage::disk('local')->exists($attachment->path)) {
+            $disk = 'local';
+        } elseif ($attachment->path && Storage::disk('public')->exists($attachment->path)) {
+            $disk = 'public';
+        }
+        if ($disk === null) {
+            abort(404);
+        }
+
+        return Storage::disk($disk)->download(
+            $attachment->path,
+            $attachment->original_name ?: basename($attachment->path)
+        );
     }
 
     public function storeVaccination(Request $request, Pet $pet): JsonResponse

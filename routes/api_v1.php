@@ -46,7 +46,7 @@ Route::prefix('auth')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::get('me', [AuthController::class, 'me']);
-        Route::put('password', [AuthController::class, 'changePassword']);
+        Route::put('password', [AuthController::class, 'changePassword'])->middleware('throttle:login');
     });
 });
 
@@ -145,6 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('pets/{pet}', [PetController::class, 'update']);
     Route::delete('pets/{pet}', [PetController::class, 'destroy']);
     Route::post('pets/{pet}/photo', [PetController::class, 'photo']);
+    Route::get('pets/{pet}/photo', [PetController::class, 'downloadPhoto']);
 
     Route::get('reports/dashboard', [ReportController::class, 'dashboard']);
     Route::get('reports/sales-by-day', [ReportController::class, 'salesByDay']);
@@ -172,6 +173,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('medical-records/{medicalRecord}', [ClinicController::class, 'showRecord']);
     Route::put('medical-records/{medicalRecord}', [ClinicController::class, 'updateRecord']);
     Route::post('medical-records/{medicalRecord}/attachments', [ClinicController::class, 'attachRecord']);
+    Route::get('medical-records/{medicalRecord}/attachments/{attachment}', [ClinicController::class, 'downloadAttachment']);
     Route::post('pets/{pet}/vaccinations', [ClinicController::class, 'storeVaccination']);
     Route::put('vaccinations/{vaccination}', [ClinicController::class, 'updateVaccination']);
     Route::post('pets/{pet}/dewormings', [ClinicController::class, 'storeDeworming']);

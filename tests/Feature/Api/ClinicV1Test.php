@@ -3,6 +3,8 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Batch;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use App\Models\Categoria;
 use App\Models\Producto;
 use App\Models\User;
@@ -100,6 +102,48 @@ class ClinicV1Test extends TestCase
             ->assertOk()
             ->json('data');
         $this->assertNotEmpty($history['vaccinations']);
+    }
+
+    public function test_clinical_attachment_is_not_public(): void
+    {
+        Storage::fake('local');
+        Storage::fake('public');
+
+        $service = VetService::query()->where('code', 'consulta')->first();
+        $this->assertNotNull($service);
+        $customer = $this->withToken($this->token)->postJson('/api/v1/customers', [
+            'name' => 'Adjunto '.$this->id(),
+            'document_type' => 'DNI',
+            'document_number' => (string) random_int(30000000, 39999999),
+        ])->assertCreated()->json('data');
+        $pet = $this->withToken($this->token)->postJson('/api/v1/customers/'.$customer['id'].'/pets', [
+            'nombre' => 'Nube',
+            'especie' => 'felino',
+        ])->assertCreated()->json('data');
+        $apt = $this->withToken($this->token)->postJson('/api/v1/appointments', [
+            'pet_id' => $pet['id'],
+            'clinic_service_id' => $service->id,
+            'staff_user_id' => $this->admin->id,
+            'scheduled_at' => now()->addHour()->toDateTimeString(),
+        ])->assertCreated()->json('data');
+        $record = $this->withToken($this->token)->postJson('/api/v1/appointments/'.$apt['id'].'/attend', [
+            'diagnostico' => 'Control',
+        ])->assertOk()->json('data');
+
+        $stored = $this->withToken($this->token)->post('/api/v1/medical-records/'.$record['id'].'/attachments', [
+            'file' => UploadedFile::fake()->image('examen.jpg'),
+            'kind' => 'foto',
+        ])->assertCreated()->json('data');
+
+        $this->assertStringContainsString('/api/v1/medical-records/'.$record['id'].'/attachments/', $stored['url']);
+        $this->assertNotEmpty(Storage::disk('local')->allFiles('clinic'));
+        $this->assertSame([], Storage::disk('public')->allFiles('clinic'));
+
+        $path = parse_url($stored['url'], PHP_URL_PATH);
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $this->get($path)->assertUnauthorized();
+        $this->withToken($this->token)->get($path)->assertOk();
     }
 
     public function test_operator_cannot_manage_catalog(): void

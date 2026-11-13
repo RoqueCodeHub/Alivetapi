@@ -23,6 +23,9 @@ export class Pos {
     invoice_type: [''],
     efectivo: [0],
     yape: [0],
+    plin: [0],
+    tarjeta: [0],
+    transferencia: [0],
   });
   readonly openForm = this.fb.nonNullable.group({
     opening_amount: [0, Validators.required],
@@ -84,7 +87,8 @@ export class Pos {
       next: (res) => {
         this.selected.set(res.data);
         this.voucher.set(null);
-        this.payForm.patchValue({ efectivo: Number(res.data.total), yape: 0 });
+        const balance = Number(res.data.balance ?? res.data.total);
+        this.payForm.patchValue({ efectivo: balance, yape: 0, plin: 0, tarjeta: 0, transferencia: 0 });
       },
     });
   }
@@ -96,12 +100,11 @@ export class Pos {
     }
     const pay = this.payForm.getRawValue();
     const payments: { method: string; amount: number }[] = [];
-    if (pay.efectivo > 0) {
-      payments.push({ method: 'efectivo', amount: pay.efectivo });
-    }
-    if (pay.yape > 0) {
-      payments.push({ method: 'yape', amount: pay.yape });
-    }
+    (['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia'] as const).forEach((method) => {
+      if (pay[method] > 0) {
+        payments.push({ method, amount: pay[method] });
+      }
+    });
     this.http
       .post<ApiResponse<any>>(`${environment.apiBaseUrl}/sales/${sale.id}/pay`, {
         invoice_type: pay.invoice_type || null,
@@ -116,7 +119,7 @@ export class Pos {
             next: (ticket) => this.voucher.set(ticket.data),
           });
         },
-        error: (err) => this.message.set(err.message || 'No se pudo cobrar'),
+        error: (err) => this.message.set(err?.error?.message || err.message || 'No se pudo cobrar'),
       });
   }
 

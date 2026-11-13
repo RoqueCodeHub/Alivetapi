@@ -44,6 +44,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if ($this->app->environment('production')) {
+            config([
+                'app.debug' => false,
+                'app.force_https' => true,
+            ]);
+        }
+
         ResetPassword::createUrlUsing(function (object $notifiable, string $token): string {
             $frontend = rtrim((string) config('app.frontend_url'), '/');
             $email = $notifiable instanceof CanResetPassword

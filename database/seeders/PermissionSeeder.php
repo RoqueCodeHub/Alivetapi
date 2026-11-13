@@ -30,6 +30,7 @@ class PermissionSeeder extends Seeder
             'sales.view',
             'sales.create',
             'sales.charge',
+            'sales.credit',
             'sales.void',
             'cash.open',
             'cash.close',

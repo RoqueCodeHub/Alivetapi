@@ -14,6 +14,8 @@ use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PetController extends Controller
 {
@@ -73,6 +75,26 @@ class PetController extends Controller
         $updated = $this->pets->storePhoto($pet, $request->file('foto'));
 
         return ApiResponse::success(new PetResource($updated), 'Foto actualizada');
+    }
+
+    public function downloadPhoto(Request $request, Pet $pet): StreamedResponse
+    {
+        $user = $request->user();
+        $staff = $user?->can('customers.view') || $user?->can('customers.update');
+        $owner = $user?->can('portal.access') && (int) $user->cliente_id === (int) $pet->cliente_id;
+        abort_unless($staff || $owner, 403);
+
+        $disk = null;
+        if ($pet->foto && Storage::disk('local')->exists($pet->foto)) {
+            $disk = 'local';
+        } elseif ($pet->foto && Storage::disk('public')->exists($pet->foto)) {
+            $disk = 'public';
+        }
+        if ($disk === null) {
+            abort(404);
+        }
+
+        return Storage::disk($disk)->download($pet->foto, basename($pet->foto));
     }
 
     private function paginated(LengthAwarePaginator $page, string $message): JsonResponse

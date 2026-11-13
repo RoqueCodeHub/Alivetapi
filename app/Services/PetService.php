@@ -84,22 +84,28 @@ class PetService
             throw new ConflictHttpException('No se puede eliminar la mascota porque tiene citas o historia clínica.');
         }
 
-        if ($pet->foto) {
-            Storage::disk('public')->delete($pet->foto);
-        }
+        $this->deleteStoredPhoto($pet->foto);
 
         $pet->delete();
     }
 
     public function storePhoto(Pet $pet, UploadedFile $file): Pet
     {
-        $path = $file->store('pets', 'public');
-        if ($pet->foto) {
-            Storage::disk('public')->delete($pet->foto);
-        }
+        $path = $file->store('pets', 'local');
+        $this->deleteStoredPhoto($pet->foto);
         $pet->update(['foto' => $path]);
 
         return $pet->fresh(['cliente.persona']);
+    }
+
+    private function deleteStoredPhoto(?string $path): void
+    {
+        if (! $path) {
+            return;
+        }
+
+        Storage::disk('local')->delete($path);
+        Storage::disk('public')->delete($path);
     }
 
     private function hasClinicalHistory(Pet $pet): bool

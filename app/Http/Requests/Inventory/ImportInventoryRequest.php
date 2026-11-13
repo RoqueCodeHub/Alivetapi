@@ -14,7 +14,17 @@ class ImportInventoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'max:10240'],
+            'file' => [
+                'required',
+                'file',
+                'max:10240',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $extension = strtolower((string) $value?->getClientOriginalExtension());
+                    if (! in_array($extension, ['csv', 'txt', 'xlsx', 'xlsm'], true)) {
+                        $fail('El archivo debe ser Excel (.xlsx) o CSV.');
+                    }
+                },
+            ],
         ];
     }
 }
