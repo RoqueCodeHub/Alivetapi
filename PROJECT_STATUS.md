@@ -71,3 +71,4 @@ Sirve para juzgar este corte, no para copiar el producto.
 - Las deudas anteriores a este corte no se reescriben. Si el ítem no tiene lote, el cobro descuenta el stock.
 - Medio y Bajo de `OWASP_REVIEW.md` quedaron cerrados: fotos privadas, costo oculto sin `costs.view`, importación por extensión, idempotencia del mismo cajero, CSP y debug apagado en producción.
 - Clínica, portal y SUNAT no se ampliaron, salvo el acceso a los adjuntos clínicos.
+- Los índices del esquema vivo y lo que no se migra están en `DB_REVIEW.md`.

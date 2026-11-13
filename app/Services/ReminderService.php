@@ -105,7 +105,7 @@ class ReminderService
         $rows = Vaccination::query()
             ->with('pet.cliente.persona')
             ->whereNotNull('next_due_at')
-            ->whereDate('next_due_at', '<=', $until)
+            ->where('next_due_at', '<=', $until)
             ->get();
         $n = 0;
         foreach ($rows as $row) {
@@ -125,7 +125,7 @@ class ReminderService
         $rows = Deworming::query()
             ->with('pet.cliente.persona')
             ->whereNotNull('next_due_at')
-            ->whereDate('next_due_at', '<=', $until)
+            ->where('next_due_at', '<=', $until)
             ->get();
         $n = 0;
         foreach ($rows as $row) {
