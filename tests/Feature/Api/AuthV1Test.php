@@ -68,16 +68,44 @@ class AuthV1Test extends TestCase
         ])->assertCreated()->assertJsonPath('data.roles.0', 'Cajero');
     }
 
-    public function test_logout_revokes_token(): void
+    public function test_forgot_password_returns_generic_message(): void
+    {
+        $this->postJson('/api/v1/auth/forgot-password', [
+            'email' => 'nadie@example.com',
+        ])->assertOk()->assertJsonPath('success', true);
+    }
+
+    public function test_reset_password_rejects_invalid_token(): void
     {
         $user = $this->makeUser('Administrador');
-        $token = $user->createToken('api')->plainTextToken;
 
-        $this->withHeaders(['Authorization' => 'Bearer '.$token])->postJson('/api/v1/auth/logout')->assertOk();
-        $this->assertDatabaseMissing('personal_access_tokens', [
-            'tokenable_id' => $user->id,
-            'name' => 'api',
-        ]);
+        $this->postJson('/api/v1/auth/reset-password', [
+            'email' => $user->email,
+            'token' => 'token-invalido',
+            'password' => 'password12',
+            'password_confirmation' => 'password12',
+        ])->assertStatus(422)->assertJsonPath('success', false);
+    }
+
+    public function test_logout_revokes_only_the_current_token(): void
+    {
+        $user = $this->makeUser('Administrador');
+        $first = $this->postJson('/api/v1/auth/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertOk()->json('data.token');
+        $second = $this->postJson('/api/v1/auth/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertOk()->json('data.token');
+
+        $this->withToken($first)->postJson('/api/v1/auth/logout')->assertOk();
+        $this->flushHeaders();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($first)->getJson('/api/v1/auth/me')->assertUnauthorized();
+        $this->flushHeaders();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($second)->getJson('/api/v1/auth/me')->assertOk();
     }
 
     private function makeUser(string $role, bool $active = true): User

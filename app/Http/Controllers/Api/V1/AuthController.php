@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ChangePasswordRequest;
+use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +33,20 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return $this->authService->me($request->user());
+    }
+
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        return $this->authService->forgotPassword($request->validated('email'));
+    }
+
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        return $this->authService->resetPassword(
+            $request->validated('email'),
+            $request->validated('token'),
+            $request->validated('password')
+        );
     }
 
     public function changePassword(ChangePasswordRequest $request): JsonResponse

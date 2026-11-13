@@ -32,6 +32,7 @@ class ProductController extends Controller
         return ApiResponse::success([
             'items' => ProductResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->products->summary(),
         ], 'Productos');
     }
 

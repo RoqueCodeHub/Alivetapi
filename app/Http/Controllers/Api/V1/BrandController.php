@@ -26,11 +26,12 @@ class BrandController extends Controller
             return ApiResponse::success($this->brands->all(), 'Marcas');
         }
 
-        $page = $this->brands->paginate(PageSize::resolve($request));
+        $page = $this->brands->paginate(PageSize::resolve($request), $request->query('q'));
 
         return ApiResponse::success([
             'items' => $page->getCollection()->values(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->brands->summary(),
         ], 'Marcas');
     }
 

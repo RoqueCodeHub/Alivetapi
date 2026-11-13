@@ -58,6 +58,9 @@ class ReportV1Test extends TestCase
         $dash = $this->withToken($this->token)->getJson('/api/v1/reports/dashboard')->assertOk()->json('data');
         $this->assertSame('admin', $dash['role']);
         $this->assertGreaterThanOrEqual(70, (float) $dash['today']['total']);
+        $this->assertGreaterThanOrEqual(1, $dash['board']['active_products']);
+        $this->assertCount(7, $dash['week_days']);
+        $this->assertGreaterThanOrEqual(2, collect($dash['week_days'])->sum('completed'));
         $this->assertGreaterThan(0, (float) $dash['profit']['profit']);
         $this->assertGreaterThan(0, (float) $dash['inventory_value']['value']);
 

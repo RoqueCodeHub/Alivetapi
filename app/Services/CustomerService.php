@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Cliente;
 use App\Models\Persona;
 use App\Models\Sale;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Support\Facades\DB;
 
@@ -25,8 +26,23 @@ class CustomerService
                         });
                 });
             })
+            ->when(request()->filled('activo'), fn ($query) => $query->where('clientes.activo', request()->boolean('activo')))
             ->orderByDesc('id')
             ->paginate(PageSize::resolve());
+    }
+
+    public function summary(): array
+    {
+        $row = Cliente::query()
+            ->leftJoin('personas', 'personas.id', '=', 'clientes.persona_id')
+            ->selectRaw('
+                COUNT(*) as total,
+                SUM(CASE WHEN clientes.activo = 1 THEN 1 ELSE 0 END) as activos,
+                SUM(CASE WHEN clientes.activo = 0 THEN 1 ELSE 0 END) as inactivos,
+                SUM(CASE WHEN personas.numero_documento IS NOT NULL AND personas.numero_documento <> \'\' THEN 1 ELSE 0 END) as documentados
+            ')->first();
+
+        return Counts::ints($row, ['total', 'activos', 'inactivos', 'documentados']);
     }
 
     public function create(array $data): Cliente

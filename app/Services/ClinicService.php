@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Vaccination;
 use App\Models\Variante;
 use App\Models\VetService;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -41,9 +42,45 @@ class ClinicService
         return VetService::query()->orderBy('name')->get();
     }
 
-    public function paginateServices(int $perPage)
+    public function paginateServices(int $perPage, ?string $search = null)
     {
-        return VetService::query()->orderBy('name')->paginate($perPage);
+        return VetService::query()
+            ->when($search, function ($query) use ($search) {
+                $query->where(function ($inner) use ($search) {
+                    $inner->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('code', 'like', '%'.$search.'%');
+                });
+            })
+            ->orderBy('name')
+            ->paginate($perPage);
+    }
+
+    public function servicesSummary(): array
+    {
+        $row = VetService::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) as activos,
+            SUM(CASE WHEN activo = 0 THEN 1 ELSE 0 END) as inactivos,
+            SUM(CASE WHEN staff_role = \'groomer\' THEN 1 ELSE 0 END) as peluqueria
+        ')->first();
+
+        return Counts::ints($row, ['total', 'activos', 'inactivos', 'peluqueria']);
+    }
+
+    public function appointmentsSummary(): array
+    {
+        $row = Appointment::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pendientes,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as atendidas,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as canceladas
+        ', [
+            Appointment::STATUS_PENDING,
+            Appointment::STATUS_ATTENDED,
+            Appointment::STATUS_CANCELLED,
+        ])->first();
+
+        return Counts::ints($row, ['total', 'pendientes', 'atendidas', 'canceladas']);
     }
 
     public function createService(array $data): VetService

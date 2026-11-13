@@ -29,9 +29,8 @@ class TicketPdf
         225 => 556, 233 => 556, 237 => 278, 241 => 556, 243 => 556, 250 => 556, 252 => 556,
     ];
 
-    public function bytes(Venta $venta): string
+    public function bytes(array $ticket): string
     {
-        $venta->loadMissing(['cliente.persona', 'detalles.producto.categoria']);
         $jpeg = $this->logoJpeg();
         $logo = null;
         if ($jpeg !== null) {
@@ -39,7 +38,7 @@ class TicketPdf
             $logo = ['width' => $info[0] ?? 280, 'height' => $info[1] ?? 280];
         }
 
-        $blocks = $this->blocks($venta, $logo);
+        $blocks = $this->blocks($ticket, $logo);
         $top = 12.0;
         $bottom = 14.0;
         $height = $top + $bottom;
@@ -57,20 +56,51 @@ class TicketPdf
         return $this->document($stream, $height, $jpeg);
     }
 
-    public function filename(Venta $venta): string
+    public function filename(array $ticket): string
     {
-        return 'boleta-'.$this->numero($venta).'.pdf';
+        return 'boleta-'.($ticket['document'] ?? 'ticket').'.pdf';
     }
 
-    private function blocks(Venta $venta, ?array $logo): array
+    public function fromVenta(Venta $venta): array
+    {
+        $venta->loadMissing(['cliente.persona', 'detalles.producto.categoria']);
+        $persona = $venta->cliente?->persona;
+        $total = (float) $venta->total;
+        $paid = $venta->monto_pagado === null ? $total : (float) $venta->monto_pagado;
+        $completed = $venta->estado === 'completada' && (bool) $venta->metodo_pago;
+
+        return [
+            'document' => config('invoicing.series', 'B001').'-'.str_pad((string) $venta->id, 6, '0', STR_PAD_LEFT),
+            'issued_at' => $venta->created_at?->timezone('America/Lima')->format('Y-m-d H:i:s'),
+            'customer_name' => $venta->cliente?->displayName() ?: 'Cliente varios',
+            'document_type' => $persona?->tipo_documento,
+            'document_number' => $persona?->numero_documento,
+            'address' => $persona?->direccion,
+            'discount' => (float) ($venta->descuento ?? 0),
+            'total' => $total,
+            'paid' => $paid,
+            'pending' => ! $completed,
+            'notes' => $venta->observaciones,
+            'payments' => $completed ? [['method' => $venta->metodo_pago, 'amount' => $paid]] : [],
+            'items' => $venta->detalles->map(fn ($detalle) => [
+                'quantity' => $detalle->cantidad,
+                'name' => $detalle->producto?->nombre ?: 'Producto',
+                'category' => $detalle->producto?->categoria?->nombre,
+                'unit_price' => (float) $detalle->precio_unitario,
+                'line_total' => (float) $detalle->subtotal,
+            ])->all(),
+        ];
+    }
+
+    private function blocks(array $ticket, ?array $logo): array
     {
         $issuer = config('invoicing.issuer');
-        $fecha = $venta->created_at?->timezone('America/Lima');
-        $total = round((float) $venta->total, 2);
-        $descuento = round((float) $venta->descuento, 2);
+        $fecha = empty($ticket['issued_at']) ? null : \Carbon\Carbon::parse($ticket['issued_at'], 'America/Lima');
+        $total = round((float) ($ticket['total'] ?? 0), 2);
+        $descuento = round((float) ($ticket['discount'] ?? 0), 2);
         $gravado = round($total / 1.18, 2);
         $igv = round($total - $gravado, 2);
-        $persona = $venta->cliente?->persona;
+        $document = (string) ($ticket['document'] ?? '');
         $cols = $this->columns();
         $blocks = [];
 
@@ -96,18 +126,18 @@ class TicketPdf
 
         $blocks[] = $this->rule();
         $blocks[] = $this->line('BOLETA DE VENTA', 10, 'F2');
-        $blocks[] = $this->line($this->numero($venta), 9, 'F2');
+        $blocks[] = $this->line($document, 9, 'F2');
         $blocks[] = $this->rule();
         $blocks[] = $this->line('CLIENTE', 8, 'F2', 'left');
 
-        $tipo = strtoupper(trim((string) ($persona->tipo_documento ?? '')));
-        $documento = trim((string) ($persona->numero_documento ?? ''));
+        $tipo = strtoupper(trim((string) ($ticket['document_type'] ?? '')));
+        $documento = trim((string) ($ticket['document_number'] ?? ''));
         if ($documento !== '') {
             $blocks[] = $this->labeled(($tipo !== '' ? $tipo : 'DOC').':', $documento);
         }
-        $this->addWrapped($blocks, $venta->cliente?->displayName() ?: 'Cliente varios', 8, 'F1', 'left');
-        if (! empty($persona?->direccion)) {
-            $this->addWrapped($blocks, (string) $persona->direccion, 7.5, 'F1', 'left');
+        $this->addWrapped($blocks, (string) ($ticket['customer_name'] ?: 'Cliente varios'), 8, 'F1', 'left');
+        if (! empty($ticket['address'])) {
+            $this->addWrapped($blocks, (string) $ticket['address'], 7.5, 'F1', 'left');
         }
 
         $blocks[] = $this->gap(3);
@@ -118,15 +148,15 @@ class TicketPdf
         $blocks[] = $this->rule();
         $blocks[] = $this->tableRow('CANT.', 'DESCRIPCIÓN', 'P.U.', 'TOTAL', 7, 'F2');
 
-        foreach ($venta->detalles as $detalle) {
-            $nombre = $detalle->producto?->nombre ?: 'Producto';
-            $categoria = trim((string) ($detalle->producto?->categoria?->nombre ?? ''));
+        foreach ($ticket['items'] ?? [] as $detalle) {
+            $nombre = $detalle['name'] ?: 'Producto';
+            $categoria = trim((string) ($detalle['category'] ?? ''));
             $descripcion = $this->wrap($nombre, 7.5, false, $cols['desc']['w']);
             $blocks[] = $this->tableRow(
-                $this->cantidad($detalle->cantidad),
+                $this->cantidad($detalle['quantity']),
                 $descripcion[0] ?? '',
-                number_format((float) $detalle->precio_unitario, 2, '.', ''),
-                number_format((float) $detalle->subtotal, 2, '.', ''),
+                number_format((float) $detalle['unit_price'], 2, '.', ''),
+                number_format((float) $detalle['line_total'], 2, '.', ''),
                 7.5,
                 'F1'
             );
@@ -147,7 +177,7 @@ class TicketPdf
         $blocks[] = $this->amount('IGV '.$this->igvPercent().'%', $this->money($igv), 8, 'F1');
         $blocks[] = $this->rule();
         $blocks[] = $this->amount('TOTAL', $this->money($total), 10, 'F2');
-        $pagado = $venta->monto_pagado === null ? $total : (float) $venta->monto_pagado;
+        $pagado = array_key_exists('paid', $ticket) ? (float) $ticket['paid'] : $total;
         $saldo = round(max($total - $pagado, 0), 2);
         if ($saldo > 0.009) {
             $blocks[] = $this->amount('SALDO', $this->money($saldo), 9, 'F2');
@@ -156,13 +186,13 @@ class TicketPdf
         $this->addWrapped($blocks, $this->enLetras($total), 7, 'F1', 'left');
         $blocks[] = $this->rule();
         $blocks[] = $this->line('FORMAS DE PAGO', 8, 'F2', 'left');
-        $this->addWrapped($blocks, $this->pago($venta), 8, 'F1', 'left');
-        if ($venta->observaciones) {
-            $this->addWrapped($blocks, (string) $venta->observaciones, 7, 'F1', 'left');
+        $this->addWrapped($blocks, $this->pago($ticket), 8, 'F1', 'left');
+        if (! empty($ticket['notes'])) {
+            $this->addWrapped($blocks, (string) $ticket['notes'], 7, 'F1', 'left');
         }
         $blocks[] = $this->rule();
         $blocks[] = $this->line('REPRESENTACIÓN IMPRESA DE BOLETA DE VENTA', 6.5, 'F1');
-        $blocks[] = $this->line($this->numero($venta), 7, 'F2');
+        $blocks[] = $this->line($document, 7, 'F2');
 
         return $blocks;
     }
@@ -431,12 +461,7 @@ class TicketPdf
         return ($units / 1000) * $size;
     }
 
-    private function numero(Venta $venta): string
-    {
-        return config('invoicing.series', 'B001').'-'.str_pad((string) $venta->id, 6, '0', STR_PAD_LEFT);
-    }
-
-    private function pago(Venta $venta): string
+    private function pago(array $ticket): string
     {
         $nombres = [
             'efectivo' => 'Efectivo',
@@ -445,14 +470,19 @@ class TicketPdf
             'tarjeta' => 'Tarjeta',
             'transferencia' => 'Transferencia',
         ];
-        if ($venta->estado !== 'completada' || ! $venta->metodo_pago) {
+        $payments = $ticket['payments'] ?? [];
+        if (($ticket['pending'] ?? false) || $payments === []) {
             return 'Pendiente de cobro';
         }
 
-        $nombre = $nombres[$venta->metodo_pago] ?? $venta->metodo_pago;
-        $monto = number_format((float) ($venta->monto_pagado ?? $venta->total), 2, '.', '');
+        $parts = [];
+        foreach ($payments as $payment) {
+            $method = (string) ($payment['method'] ?? '');
+            $nombre = $nombres[$method] ?? $method;
+            $parts[] = $nombre.' - S/ '.number_format((float) ($payment['amount'] ?? 0), 2, '.', '');
+        }
 
-        return $nombre.' - S/ '.$monto;
+        return implode(' · ', $parts);
     }
 
     private function money(float $amount): string

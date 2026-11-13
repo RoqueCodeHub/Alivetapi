@@ -6,7 +6,9 @@ use App\Models\User;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthService
 {
@@ -30,7 +32,6 @@ class AuthService
             return ApiResponse::error('Usa el portal de cliente para entrar.', 403);
         }
 
-        $user->tokens()->where('name', 'api')->delete();
         $token = $user->createToken('api')->plainTextToken;
         $this->logins->record(request(), true, $email, $user);
 
@@ -51,7 +52,6 @@ class AuthService
             return ApiResponse::error('Credenciales incorrectas', 401);
         }
 
-        $user->tokens()->where('name', 'portal')->delete();
         $token = $user->createToken('portal')->plainTextToken;
         $this->logins->record(request(), true, $email, $user);
 
@@ -64,7 +64,10 @@ class AuthService
 
     public function logout(User $user): JsonResponse
     {
-        $user->tokens()->delete();
+        $token = $user->currentAccessToken();
+        if ($token instanceof \Laravel\Sanctum\PersonalAccessToken) {
+            $token->delete();
+        }
 
         return ApiResponse::success(null, 'Sesión cerrada');
     }
@@ -89,6 +92,43 @@ class AuthService
         $user->tokens()->where('id', '!=', $user->currentAccessToken()?->id)->delete();
 
         return ApiResponse::success(null, 'Contraseña actualizada');
+    }
+
+    public function forgotPassword(string $email): JsonResponse
+    {
+        try {
+            Password::sendResetLink(['email' => $email]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return ApiResponse::error('No se pudo enviar el correo. Intenta más tarde.', 503);
+        }
+
+        return ApiResponse::success(null, 'Si el correo está registrado, enviaremos instrucciones para restablecer la contraseña.');
+    }
+
+    public function resetPassword(string $email, string $token, string $password): JsonResponse
+    {
+        $status = Password::reset(
+            [
+                'email' => $email,
+                'token' => $token,
+                'password' => $password,
+                'password_confirmation' => $password,
+            ],
+            function (User $user, string $newPassword): void {
+                $user->forceFill([
+                    'password' => Hash::make($newPassword),
+                ])->save();
+                $user->tokens()->delete();
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            return ApiResponse::error('El enlace no es válido o ya expiró.', 422);
+        }
+
+        return ApiResponse::success(null, 'Contraseña actualizada. Ya puedes iniciar sesión.');
     }
 
     public function payload(User $user): array

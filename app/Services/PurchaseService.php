@@ -11,6 +11,7 @@ use App\Models\PurchasePayment;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Variante;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -21,13 +22,51 @@ class PurchaseService
     {
     }
 
-    public function paginate(?string $status = null): LengthAwarePaginator
+    public function paginate(?string $status = null, ?string $search = null): LengthAwarePaginator
     {
         return Purchase::query()
             ->with(['supplier', 'items.variante.producto'])
             ->when($status, fn ($q) => $q->where('status', $status))
+            ->when($search, fn ($q) => $q->where('comprobante', 'like', '%'.$search.'%'))
             ->orderByDesc('id')
             ->paginate(PageSize::resolve());
+    }
+
+    public function summary(): array
+    {
+        $row = Purchase::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as borradores,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as confirmadas,
+            SUM(CASE WHEN status = ? AND payment_status <> ? THEN 1 ELSE 0 END) as por_pagar
+        ', [
+            Purchase::STATUS_DRAFT,
+            Purchase::STATUS_CONFIRMED,
+            Purchase::STATUS_CONFIRMED,
+            Purchase::PAYMENT_PAGADO,
+        ])->first();
+
+        return Counts::ints($row, ['total', 'borradores', 'confirmadas', 'por_pagar']);
+    }
+
+    public function payablesSummary(): array
+    {
+        $today = now()->toDateString();
+        $row = Purchase::query()
+            ->where('status', Purchase::STATUS_CONFIRMED)
+            ->where('payment_status', '!=', Purchase::PAYMENT_PAGADO)
+            ->selectRaw('COUNT(*) as documentos')
+            ->selectRaw('COALESCE(SUM(total - paid_amount), 0) as saldo')
+            ->selectRaw('SUM(CASE WHEN due_date IS NOT NULL AND due_date < ? THEN 1 ELSE 0 END) as vencidos', [$today])
+            ->selectRaw('SUM(CASE WHEN due_date IS NULL OR due_date >= ? THEN 1 ELSE 0 END) as vigentes', [$today])
+            ->first();
+
+        return [
+            'documentos' => (int) ($row->documentos ?? 0),
+            'saldo' => round((float) ($row->saldo ?? 0), 2),
+            'vencidos' => (int) ($row->vencidos ?? 0),
+            'vigentes' => (int) ($row->vigentes ?? 0),
+        ];
     }
 
     public function create(array $data, User $user): Purchase

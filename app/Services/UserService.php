@@ -3,18 +3,38 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Hash;
 
 class UserService
 {
-    public function paginate(): LengthAwarePaginator
+    public function paginate(?string $search = null): LengthAwarePaginator
     {
         return User::query()
             ->with('roles')
+            ->when($search, function ($query) use ($search) {
+                $query->where(function ($inner) use ($search) {
+                    $inner->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('email', 'like', '%'.$search.'%');
+                });
+            })
             ->orderBy('name')
             ->paginate(PageSize::resolve());
+    }
+
+    public function summary(): array
+    {
+        $since = now()->subDays(30)->toDateTimeString();
+        $row = User::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as activos,
+            SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactivos,
+            SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) as recientes
+        ', [$since])->first();
+
+        return Counts::ints($row, ['total', 'activos', 'inactivos', 'recientes']);
     }
 
     public function create(array $data): User

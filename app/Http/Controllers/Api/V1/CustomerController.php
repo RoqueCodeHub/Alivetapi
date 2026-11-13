@@ -34,6 +34,7 @@ class CustomerController extends Controller
         return ApiResponse::success([
             'items' => CustomerResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->customers->summary(),
         ], 'Clientes');
     }
 

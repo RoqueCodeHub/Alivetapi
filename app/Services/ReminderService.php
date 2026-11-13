@@ -10,6 +10,7 @@ use App\Models\Deworming;
 use App\Models\Reminder;
 use App\Models\Vaccination;
 use App\Mail\ReminderMail;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Support\Facades\Mail;
 
@@ -65,18 +66,44 @@ class ReminderService
         return $sent;
     }
 
-    public function listForUser($user, ?string $audience = null, ?string $type = null)
+    public function listForUser($user, ?string $audience = null, ?string $type = null, ?string $search = null)
     {
         return Reminder::query()
             ->with('cliente.persona')
             ->when($audience, fn ($q) => $q->where('audience', $audience))
             ->when($type, fn ($q) => $q->where('type', $type))
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($inner) use ($search) {
+                    $inner->where('title', 'like', '%'.$search.'%')
+                        ->orWhere('message', 'like', '%'.$search.'%');
+                });
+            })
             ->when(! $user->can('reports.view_all') && ! $user->can('inventory.view'), function ($q) {
                 $q->where('audience', Reminder::AUDIENCE_CUSTOMER);
             })
             ->orderByDesc('due_at')
             ->orderByDesc('id')
             ->paginate(PageSize::resolve());
+    }
+
+    public function summary($user): array
+    {
+        $query = Reminder::query()->when(
+            ! $user->can('reports.view_all') && ! $user->can('inventory.view'),
+            fn ($inner) => $inner->where('audience', Reminder::AUDIENCE_CUSTOMER)
+        );
+        $row = $query->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pendientes,
+            SUM(CASE WHEN audience = ? THEN 1 ELSE 0 END) as clientes,
+            SUM(CASE WHEN audience = ? THEN 1 ELSE 0 END) as internos
+        ', [
+            Reminder::STATUS_PENDING,
+            Reminder::AUDIENCE_CUSTOMER,
+            Reminder::AUDIENCE_INTERNAL,
+        ])->first();
+
+        return Counts::ints($row, ['total', 'pendientes', 'clientes', 'internos']);
     }
 
     public function dismiss(Reminder $reminder): Reminder

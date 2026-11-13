@@ -11,6 +11,7 @@ use App\Services\UserService;
 use App\Support\ApiResponse;
 use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
@@ -19,15 +20,16 @@ class UserController extends Controller
     {
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', User::class);
 
-        $page = $this->users->paginate();
+        $page = $this->users->paginate($request->query('q'));
 
         return ApiResponse::success([
             'items' => UserResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->users->summary(),
         ], 'Usuarios');
     }
 

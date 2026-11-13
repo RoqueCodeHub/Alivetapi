@@ -42,6 +42,8 @@ Route::get('health', HealthController::class);
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:login');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:login');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
@@ -120,6 +122,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('sales/{sale}/pay', [SaleController::class, 'pay']);
     Route::get('sales/{sale}', [SaleController::class, 'show']);
     Route::get('sales/{sale}/receipt', [SaleController::class, 'receipt']);
+    Route::get('sales/{sale}/ticket', [SaleController::class, 'ticket']);
     Route::post('sales/{sale}/void', [SaleController::class, 'void']);
     Route::post('sales/{sale}/returns', [SaleController::class, 'returnSale']);
 

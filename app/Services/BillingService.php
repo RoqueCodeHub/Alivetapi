@@ -9,6 +9,7 @@ use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\User;
 use App\Services\Invoicing\PseGateway;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +39,23 @@ class BillingService
     public function paginate(): LengthAwarePaginator
     {
         return Invoice::query()->with(['sale', 'user', 'related'])->orderByDesc('id')->paginate(PageSize::resolve());
+    }
+
+    public function summary(): array
+    {
+        $row = Invoice::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as aceptados,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as rechazados,
+            SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as en_cola
+        ', [
+            Invoice::STATUS_ACCEPTED,
+            Invoice::STATUS_REJECTED,
+            Invoice::STATUS_QUEUED,
+            Invoice::STATUS_SENT,
+        ])->first();
+
+        return Counts::ints($row, ['total', 'aceptados', 'rechazados', 'en_cola']);
     }
 
     public function series(): array

@@ -28,7 +28,7 @@ class StockController extends Controller
     {
         abort_unless($request->user()?->can('inventory.view'), 403);
 
-        $page = $this->stock->catalog($request->query('q'));
+        $page = $this->stock->catalog($request->query('q'), $request->boolean('low_stock'));
         $items = $page->getCollection()->map(function (Variante $variante) {
             $onHand = (int) $variante->batches->sum('quantity');
 
@@ -43,6 +43,7 @@ class StockController extends Controller
         return ApiResponse::success([
             'items' => $items,
             'meta' => PageSize::meta($page),
+            'summary' => $this->stock->summary(),
         ], 'Stock');
     }
 

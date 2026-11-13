@@ -10,6 +10,7 @@ use App\Http\Requests\Sales\VoidSaleRequest;
 use App\Http\Resources\SaleResource;
 use App\Models\Sale;
 use App\Services\SaleService;
+use App\Services\TicketPdf;
 use App\Support\ApiResponse;
 use App\Support\PageSize;
 use Illuminate\Http\JsonResponse;
@@ -42,6 +43,7 @@ class SaleController extends Controller
         return ApiResponse::success([
             'items' => SaleResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->sales->summary($request->user()),
         ], 'Ventas');
     }
 
@@ -96,6 +98,19 @@ class SaleController extends Controller
         $this->authorize('view', $sale);
 
         return ApiResponse::success($this->sales->receipt($sale), 'Ticket');
+    }
+
+    public function ticket(Sale $sale, TicketPdf $tickets)
+    {
+        $this->authorize('view', $sale);
+        $document = $this->sales->ticketDocument($sale);
+        $pdf = $tickets->bytes($document);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$tickets->filename($document).'"',
+            'Content-Length' => strlen($pdf),
+        ]);
     }
 
     public function void(VoidSaleRequest $request, Sale $sale): JsonResponse

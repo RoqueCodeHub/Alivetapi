@@ -30,11 +30,12 @@ class SupplierController extends Controller
             );
         }
 
-        $page = $this->suppliers->paginate(PageSize::resolve($request));
+        $page = $this->suppliers->paginate(PageSize::resolve($request), $request->query('q'));
 
         return ApiResponse::success([
             'items' => SupplierResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->suppliers->summary(),
         ], 'Proveedores');
     }
 

@@ -24,7 +24,8 @@ class TicketPdfTest extends TestCase
         try {
             $venta = $this->venta();
             $emitida = $venta->created_at->timezone('America/Lima');
-            $pdf = (new TicketPdf)->bytes($venta);
+            $tickets = new TicketPdf;
+            $pdf = $tickets->bytes($tickets->fromVenta($venta));
         } finally {
             config(['invoicing.issuer.phone' => $previousPhone]);
         }

@@ -28,6 +28,7 @@ class StockCountController extends Controller
         return ApiResponse::success([
             'items' => StockCountResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->counts->summary(),
         ], 'Conteos físicos');
     }
 

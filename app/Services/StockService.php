@@ -8,6 +8,7 @@ use App\Models\Producto;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Variante;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -584,10 +585,14 @@ class StockService
         ]);
     }
 
-    public function catalog(?string $search = null)
+    public function catalog(?string $search = null, bool $lowOnly = false)
     {
         return Variante::query()
             ->with(['producto.categoria', 'batches'])
+            ->when($lowOnly, function ($q) {
+                $q->where('min_stock', '>', 0)
+                    ->whereRaw('(select coalesce(sum(quantity), 0) from batches where batches.variant_id = variantes.id) <= variantes.min_stock');
+            })
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($inner) use ($search) {
                     $inner->where('sku', 'like', '%'.$search.'%')
@@ -597,6 +602,26 @@ class StockService
             })
             ->orderBy('id')
             ->paginate(PageSize::resolve());
+    }
+
+    public function summary(): array
+    {
+        $limit = now()->addDays(30)->toDateString();
+        $row = DB::query()->fromSub(
+            Variante::query()
+                ->leftJoin('batches', 'batches.variant_id', '=', 'variantes.id')
+                ->select('variantes.id', 'variantes.min_stock')
+                ->selectRaw('COALESCE(SUM(batches.quantity), 0) as on_hand')
+                ->selectRaw('MIN(CASE WHEN batches.quantity > 0 THEN batches.expiry_date END) as next_expiry')
+                ->groupBy('variantes.id', 'variantes.min_stock'),
+            'stock'
+        )->selectRaw('COUNT(*) as total')
+            ->selectRaw('SUM(CASE WHEN min_stock > 0 AND on_hand <= min_stock THEN 1 ELSE 0 END) as bajos')
+            ->selectRaw('SUM(CASE WHEN on_hand = 0 THEN 1 ELSE 0 END) as sin_stock')
+            ->selectRaw('SUM(CASE WHEN next_expiry IS NOT NULL AND next_expiry <= ? THEN 1 ELSE 0 END) as por_vencer', [$limit])
+            ->first();
+
+        return Counts::ints($row, ['total', 'bajos', 'sin_stock', 'por_vencer']);
     }
 
     public function variantStock(Variante $variante): array

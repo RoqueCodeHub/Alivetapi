@@ -35,6 +35,7 @@ class CategoryController extends Controller
         return ApiResponse::success([
             'items' => CategoryResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->categories->summary(),
         ], 'Categorías');
     }
 

@@ -27,6 +27,7 @@ class InvoiceController extends Controller
         return ApiResponse::success([
             'items' => InvoiceResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->billing->summary(),
         ], 'Comprobantes');
     }
 

@@ -23,12 +23,14 @@ class ReminderController extends Controller
         $page = $this->reminders->listForUser(
             $request->user(),
             $request->query('audience'),
-            $request->query('type')
+            $request->query('type'),
+            $request->query('q')
         );
 
         return ApiResponse::success([
             'items' => ReminderResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->reminders->summary($request->user()),
         ], 'Recordatorios');
     }
 

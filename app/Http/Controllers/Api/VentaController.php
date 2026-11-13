@@ -246,11 +246,12 @@ class VentaController extends Controller
             return response()->json(['message' => 'Venta no encontrada'], 404);
         }
 
-        $pdf = $tickets->bytes($venta);
+        $ticket = $tickets->fromVenta($venta);
+        $pdf = $tickets->bytes($ticket);
 
         return response($pdf, 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.$tickets->filename($venta).'"',
+            'Content-Disposition' => 'inline; filename="'.$tickets->filename($ticket).'"',
             'Content-Length' => strlen($pdf),
         ]);
     }

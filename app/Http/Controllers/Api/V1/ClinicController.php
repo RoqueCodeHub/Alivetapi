@@ -39,11 +39,12 @@ class ClinicController extends Controller
             return ApiResponse::success(VetServiceResource::collection($this->clinic->services()), 'Servicios');
         }
 
-        $page = $this->clinic->paginateServices(PageSize::resolve($request));
+        $page = $this->clinic->paginateServices(PageSize::resolve($request), $request->query('q'));
 
         return ApiResponse::success([
             'items' => VetServiceResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->clinic->servicesSummary(),
         ], 'Servicios');
     }
 
@@ -89,6 +90,7 @@ class ClinicController extends Controller
         return ApiResponse::success([
             'items' => AppointmentResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->clinic->appointmentsSummary(),
         ], 'Agenda');
     }
 

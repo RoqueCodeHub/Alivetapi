@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Batch;
+use App\Models\Cliente;
+use App\Models\Producto;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePayment;
@@ -62,6 +64,7 @@ class ReportService
                 'role' => 'operator',
                 'today' => $today,
                 'cash' => $this->cash->current($user),
+                'week_days' => $this->weekDays($todayTo, $user->id),
             ];
         }
 
@@ -95,7 +98,65 @@ class ReportService
             'slow_movers' => $this->slowMovers($filters),
             'inventory_value' => $this->inventoryValue(),
             'expiring' => $this->stock->expiryAlerts(),
+            'board' => $this->board(),
+            'week_days' => $this->weekDays($todayTo, null),
         ];
+    }
+
+    /**
+     * @return array{active_products: int, customers: int, low_stock: int}
+     */
+    private function board(): array
+    {
+        $products = Producto::query()->selectRaw('
+            SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) as activos,
+            SUM(CASE WHEN activo = 1 AND stock_minimo > 0 AND stock_actual <= stock_minimo THEN 1 ELSE 0 END) as stock_bajo
+        ')->first();
+        $customers = Cliente::query()->where('activo', true)->count();
+
+        return [
+            'active_products' => (int) ($products->activos ?? 0),
+            'customers' => (int) $customers,
+            'low_stock' => (int) ($products->stock_bajo ?? 0),
+        ];
+    }
+
+    /**
+     * @return list<array{date: string, total: float, completed: int, pending: int, voided: int}>
+     */
+    private function weekDays(Carbon $to, ?int $userId): array
+    {
+        $from = $to->copy()->startOfDay()->subDays(6);
+        $end = $to->copy()->endOfDay();
+        $rows = Sale::query()
+            ->when($userId, fn (Builder $query) => $query->where('user_id', $userId))
+            ->whereBetween('created_at', [$from, $end])
+            ->selectRaw(
+                'DATE(created_at) as d,
+                SUM(CASE WHEN status = ? THEN total ELSE 0 END) as total,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as voided',
+                [Sale::STATUS_COMPLETED, Sale::STATUS_COMPLETED, Sale::STATUS_PENDING, Sale::STATUS_VOIDED]
+            )
+            ->groupByRaw('DATE(created_at)')
+            ->get()
+            ->keyBy(fn ($row) => Carbon::parse($row->d)->toDateString());
+
+        $days = [];
+        for ($i = 0; $i < 7; $i++) {
+            $date = $from->copy()->addDays($i)->toDateString();
+            $row = $rows->get($date);
+            $days[] = [
+                'date' => $date,
+                'total' => round((float) ($row->total ?? 0), 2),
+                'completed' => (int) ($row->completed ?? 0),
+                'pending' => (int) ($row->pending ?? 0),
+                'voided' => (int) ($row->voided ?? 0),
+            ];
+        }
+
+        return $days;
     }
 
     public function salesByDay(array $filters): array

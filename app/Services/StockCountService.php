@@ -8,12 +8,26 @@ use App\Models\StockCount;
 use App\Models\StockCountItem;
 use App\Models\StockMovement;
 use App\Models\User;
+use App\Support\Counts;
 use Illuminate\Support\Facades\DB;
 
 class StockCountService
 {
     public function __construct(private readonly StockService $stock)
     {
+    }
+
+    public function summary(): array
+    {
+        $today = now()->toDateString();
+        $row = StockCount::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as borradores,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as aprobados,
+            SUM(CASE WHEN DATE(counted_at) = ? THEN 1 ELSE 0 END) as de_hoy
+        ', [StockCount::STATUS_DRAFT, StockCount::STATUS_APPROVED, $today])->first();
+
+        return Counts::ints($row, ['total', 'borradores', 'aprobados', 'de_hoy']);
     }
 
     public function create(User $user, ?string $notes = null): StockCount

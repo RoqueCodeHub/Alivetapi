@@ -76,6 +76,11 @@ class PosV1Test extends TestCase
             ->assertOk()
             ->assertJsonPath('data.document', $sale['document']);
 
+        $ticket = $this->withToken($this->token)->get('/api/v1/sales/'.$sale['id'].'/ticket');
+        $ticket->assertOk();
+        $this->assertStringContainsString('application/pdf', (string) $ticket->headers->get('content-type'));
+        $this->assertStringStartsWith('%PDF', $ticket->getContent());
+
         $this->withToken($this->token)->postJson('/api/v1/sales/'.$sale['id'].'/void', [
             'reason' => 'Error de cobro',
         ])->assertOk();
@@ -83,6 +88,28 @@ class PosV1Test extends TestCase
         $this->assertSame(5, $early->fresh()->quantity);
         $this->assertSame(8, $late->fresh()->quantity);
         $this->assertSame(Sale::STATUS_VOIDED, Sale::find($sale['id'])->status);
+    }
+
+    public function test_ticket_is_forbidden_without_sales_permission(): void
+    {
+        $variant = $this->makeVariant(10);
+        $this->stockBatch($variant, 2, now()->addMonth()->toDateString());
+        $this->withToken($this->token)->postJson('/api/v1/cash-sessions/open', [
+            'opening_amount' => 20,
+        ])->assertCreated();
+        $sale = $this->withToken($this->token)->postJson('/api/v1/sales', [
+            'idempotency_key' => 'ticket-'.$this->id(),
+            'items' => [['variant_id' => $variant->id, 'quantity' => 1]],
+            'payments' => [['method' => 'efectivo', 'amount' => 10]],
+        ])->assertCreated()->json('data');
+
+        $vet = User::factory()->create(['password' => Hash::make('password'), 'is_active' => true]);
+        $vet->syncRoles(['Veterinario']);
+
+        $this->flushHeaders();
+        $this->actingAs($vet, 'sanctum')
+            ->get('/api/v1/sales/'.$sale['id'].'/ticket')
+            ->assertForbidden();
     }
 
     public function test_operator_sees_own_sales_and_cannot_void(): void

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\StockException;
 use App\Models\Categoria;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -39,6 +40,18 @@ class CategoryService
             ->when($request->filled('activo'), fn ($query) => $query->where('activo', $request->boolean('activo')))
             ->orderBy('nombre')
             ->paginate($perPage);
+    }
+
+    public function summary(): array
+    {
+        $row = Categoria::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN parent_id IS NULL THEN 1 ELSE 0 END) as principales,
+            SUM(CASE WHEN parent_id IS NOT NULL THEN 1 ELSE 0 END) as subcategorias,
+            SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) as activas
+        ')->first();
+
+        return Counts::ints($row, ['total', 'principales', 'subcategorias', 'activas']);
     }
 
     public function create(array $data): Categoria

@@ -6,6 +6,7 @@ use App\Models\Batch;
 use App\Models\Categoria;
 use App\Models\Producto;
 use App\Models\Variante;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -28,6 +29,19 @@ class ProductService
             ->with(['categoria', 'marca', 'proveedor', 'variantes.batches'])
             ->orderBy('nombre')
             ->paginate($perPage);
+    }
+
+    public function summary(): array
+    {
+        $limit = now()->addDays(30)->toDateString();
+        $row = Producto::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) as activos,
+            SUM(CASE WHEN stock_minimo > 0 AND stock_actual <= stock_minimo THEN 1 ELSE 0 END) as stock_bajo,
+            SUM(CASE WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento <= ? THEN 1 ELSE 0 END) as por_vencer
+        ', [$limit])->first();
+
+        return Counts::ints($row, ['total', 'activos', 'stock_bajo', 'por_vencer']);
     }
 
     public function create(array $data): Producto

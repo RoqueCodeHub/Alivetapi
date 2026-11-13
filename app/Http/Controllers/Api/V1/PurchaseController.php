@@ -25,11 +25,12 @@ class PurchaseController extends Controller
     {
         $this->authorize('viewAny', Purchase::class);
 
-        $page = $this->purchases->paginate($request->query('status'));
+        $page = $this->purchases->paginate($request->query('status'), $request->query('q'));
 
         return ApiResponse::success([
             'items' => PurchaseResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->purchases->summary(),
         ], 'Compras');
     }
 
@@ -85,6 +86,7 @@ class PurchaseController extends Controller
         return ApiResponse::success([
             'items' => PurchaseResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->purchases->payablesSummary(),
         ], 'Cuentas por pagar');
     }
 

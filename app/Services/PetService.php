@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Cliente;
 use App\Models\Pet;
+use App\Support\Counts;
 use App\Support\PageSize;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -61,6 +62,18 @@ class PetService
             ->orderBy('nombre')
             ->orderBy('id')
             ->paginate(PageSize::resolve($request));
+    }
+
+    public function summary(): array
+    {
+        $row = Pet::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN foto IS NOT NULL AND foto <> \'\' THEN 1 ELSE 0 END) as con_foto,
+            SUM(CASE WHEN especie IS NOT NULL AND especie <> \'\' THEN 1 ELSE 0 END) as con_especie,
+            SUM(CASE WHEN especie IS NULL OR especie = \'\' THEN 1 ELSE 0 END) as sin_especie
+        ')->first();
+
+        return Counts::ints($row, ['total', 'con_foto', 'con_especie', 'sin_especie']);
     }
 
     public function create(Cliente $cliente, array $data): Pet

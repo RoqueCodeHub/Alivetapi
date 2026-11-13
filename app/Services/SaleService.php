@@ -15,6 +15,7 @@ use App\Models\SaleReturnItem;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Variante;
+use App\Support\Counts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +63,63 @@ class SaleService
             ->when($request->filled('fecha'), fn ($builder) => $builder->whereDate('created_at', $request->fecha))
             ->orderByDesc('id')
             ->paginate($perPage);
+    }
+
+    public function summary(User $user): array
+    {
+        $query = Sale::query()->when(
+            ! $this->seesAll($user),
+            fn ($builder) => $builder->where('user_id', $user->id)
+        );
+        $row = $query->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completadas,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pendientes,
+            SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as anuladas,
+            COALESCE(SUM(CASE WHEN status = ? THEN total ELSE 0 END), 0) as monto
+        ', [
+            Sale::STATUS_COMPLETED,
+            Sale::STATUS_PENDING,
+            Sale::STATUS_VOIDED,
+            Sale::STATUS_COMPLETED,
+        ])->first();
+
+        return [
+            ...Counts::ints($row, ['total', 'completadas', 'pendientes', 'anuladas']),
+            'monto' => round((float) ($row->monto ?? 0), 2),
+        ];
+    }
+
+    public function ticketDocument(Sale $sale): array
+    {
+        $sale->loadMissing(['items.variante.producto.categoria', 'payments', 'customer.persona']);
+        $persona = $sale->customer?->persona;
+        $paid = $sale->amountPaid();
+
+        return [
+            'document' => $sale->document(),
+            'issued_at' => $sale->created_at?->timezone('America/Lima')->format('Y-m-d H:i:s'),
+            'customer_name' => $sale->customer?->displayName() ?: 'Cliente varios',
+            'document_type' => $persona?->tipo_documento,
+            'document_number' => $persona?->numero_documento,
+            'address' => $persona?->direccion,
+            'discount' => (float) $sale->discount,
+            'total' => (float) $sale->total,
+            'paid' => $paid,
+            'pending' => $sale->status !== Sale::STATUS_COMPLETED,
+            'notes' => $sale->notes,
+            'payments' => $sale->payments->map(fn ($payment) => [
+                'method' => $payment->method,
+                'amount' => (float) $payment->amount,
+            ])->all(),
+            'items' => $sale->items->map(fn ($item) => [
+                'quantity' => $item->quantity,
+                'name' => $item->description ?: ($item->variante?->producto?->nombre ?: 'Producto'),
+                'category' => $item->variante?->producto?->categoria?->nombre,
+                'unit_price' => (float) $item->unit_price,
+                'line_total' => (float) $item->line_total,
+            ])->all(),
+        ];
     }
 
     public function catalog(Request $request): LengthAwarePaginator

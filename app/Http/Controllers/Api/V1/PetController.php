@@ -102,6 +102,7 @@ class PetController extends Controller
         return ApiResponse::success([
             'items' => PetResource::collection($page->getCollection())->resolve(),
             'meta' => PageSize::meta($page),
+            'summary' => $this->pets->summary(),
         ], $message);
     }
 }

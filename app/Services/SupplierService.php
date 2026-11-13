@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Persona;
 use App\Models\Proveedor;
+use App\Support\Counts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -15,9 +16,31 @@ class SupplierService
         return Proveedor::query()->with('persona')->orderBy('id')->get();
     }
 
-    public function paginate(int $perPage): LengthAwarePaginator
+    public function paginate(int $perPage, ?string $search = null): LengthAwarePaginator
     {
-        return Proveedor::query()->with('persona')->orderBy('id')->paginate($perPage);
+        return Proveedor::query()
+            ->with('persona')
+            ->when($search, function ($query) use ($search) {
+                $query->where(function ($inner) use ($search) {
+                    $inner->where('nombre', 'like', '%'.$search.'%')
+                        ->orWhere('empresa', 'like', '%'.$search.'%')
+                        ->orWhere('ruc', 'like', '%'.$search.'%');
+                });
+            })
+            ->orderBy('id')
+            ->paginate($perPage);
+    }
+
+    public function summary(): array
+    {
+        $row = Proveedor::query()->selectRaw('
+            COUNT(*) as total,
+            SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) as activos,
+            SUM(CASE WHEN ruc IS NOT NULL AND ruc <> \'\' THEN 1 ELSE 0 END) as con_ruc,
+            SUM(CASE WHEN telefono IS NOT NULL AND telefono <> \'\' THEN 1 ELSE 0 END) as con_telefono
+        ')->first();
+
+        return Counts::ints($row, ['total', 'activos', 'con_ruc', 'con_telefono']);
     }
 
     public function create(array $data): Proveedor
